@@ -558,3 +558,50 @@
         experience fell short. "The Alexa+ track's headline path requires a CLI behind a private
         registry gated on Solutions Architect onboarding, and the docs do not say so until the
         environment-setup page" is precise, true, and useful to the team that owns it.
+
+- **The agent has no way to discover a product, and can refuse without leaving a record.
+  (opened 2026-09-19, found by running the model against the real stack — BLOCKS orchestrator
+  step 3)**
+
+  Two findings from the first live run, and the second is the serious one.
+
+  **(a) There is no catalog tool.** Asked to restock Brand A, the model invented the product id
+  `brand-a-detergent`; the real id is `detergent-brand-a`, and `propose_purchase` failed. Nothing
+  in Vouch's nine tools lets an agent see what exists. This is a plain gap rather than a subtle
+  one: UCP's own MCP binding specifies `search_catalog` as a merchant tool, and we implemented the
+  merchant's REST side without ever exposing browsing to the agent.
+
+  **(b) The model refused a purchase on its own judgement, calling no tools at all.** Asked to buy
+  the $27.80 Brand C, it replied "I can only purchase Brand A or Brand B without requiring
+  approval" and stopped. That answer is *correct* and it is the wrong behaviour, which is what
+  makes it worth writing down. Refusing in the model leaves **no Vouch, no UCP session and nothing
+  the household can question** — the refusal becomes an opinion in a chat log rather than a
+  recorded act of the gate. The entire pitch is that the boundary is enforced and auditable, not
+  that a well-prompted model behaves itself.
+
+  **(a) is probably causing (b)**, and that ordering matters: with no product id the model
+  *cannot* call `propose_purchase`, so falling back to conversation is the only move it has. Fix
+  the catalog gap first and re-measure before building any machinery against (b). Do not add
+  prompt threats about "always call the tool" until the tool is actually reachable.
+
+  **Why this is a §3 decision rather than a quick fix:** it changes the MCP tool surface, which
+  §10 of `CLAUDE.md` treats as load-bearing — "no tool completes a checkout directly" is asserted
+  by a test, and any new tool has to keep that true. A read-only `search_catalog` does, but the
+  decision belongs on the record either way. Options: expose a read-only catalog tool on Vouch's
+  server; proxy the merchant's UCP MCP binding; or put the catalogue in the system prompt (cheap,
+  and wrong the moment the catalogue changes).
+
+  **Correction to an earlier reading, recorded because it nearly became a false finding.** The
+  first rehearsal appeared to show the agent approving its own held purchase. It did not. A stale
+  `mcp-server` from an earlier session still held port 4020, the newly started one died with
+  `EADDRINUSE`, and the agent was talking to an older database. The lesson is about the finding
+  process, not the agent: **check what the process is actually connected to before believing what
+  it reports.**
+
+- **Gemini free tier is 20 requests per day, per model (measured 2026-09-19).** Not per session —
+  per day. One agent turn costs several requests, because each tool result goes back to the model
+  for another call, so a five-turn rehearsal is roughly 10-15. In practice that is **about one
+  full rehearsal per day** before `RESOURCE_EXHAUSTED`. This is a scheduling constraint on the
+  demo, not a code problem, and it needs deciding before week 5: enable billing on the Google key,
+  try `gemini-2.5-flash-lite` (separate quota), or move to Bedrock when the $150 credit lands.
+  It is also why the live tests are opt-in (`npm run test:live`) and skipped by default.

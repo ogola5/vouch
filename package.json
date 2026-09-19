@@ -14,8 +14,10 @@
     "dev:web-app": "npm run dev --workspace packages/web-app",
     "dev:all": "npm run dev:mock-merchant & npm run dev:mcp-server & npm run dev:web-app",
     "check:model": "node --env-file-if-exists=.env packages/orchestrator/src/checkModel.ts",
+    "demo:chat": "node --env-file-if-exists=.env packages/orchestrator/src/rehearse.ts",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
-    "test": "tsc -b && node --enable-source-maps --test \"test/**/*.test.ts\" \"packages/*/test/**/*.test.ts\""
+    "test": "tsc -b && node --enable-source-maps --test \"test/**/*.test.ts\" \"packages/*/test/**/*.test.ts\"",
+    "test:live": "tsc -b && node --env-file-if-exists=.env --enable-source-maps --test \"packages/orchestrator/test/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
