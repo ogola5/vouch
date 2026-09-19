@@ -9,6 +9,7 @@
     { "path": "./packages/db" },
     { "path": "./packages/mock-merchant" },
     { "path": "./packages/mcp-server" },
-    { "path": "./packages/web-app" }
+    { "path": "./packages/web-app" },
+    { "path": "./packages/orchestrator" }
   ]
 }

@@ -22,7 +22,9 @@ import { startWebApp } from "@vouch/web-app";
  * refused would be worse than no dashboard at all.
  */
 
-let web: { server: Server; url: string };
+// Inferred from startWebApp rather than hand-written, so the annotation
+// cannot drift behind what the function actually returns.
+let web: Awaited<ReturnType<typeof startWebApp>>;
 let mcp: Server;
 let merchantServer: Server;
 let store: VouchStore;

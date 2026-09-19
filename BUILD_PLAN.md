@@ -253,11 +253,40 @@
         ```
         ```ts
         import { Agent, McpClient } from "@strands-agents/sdk";
-        // Vouch's MCP server speaks Streamable HTTP, so pair McpClient with
-        // StreamableHTTPClientTransport from @modelcontextprotocol/sdk rather
-        // than the stdio transport the Strands docs use in their example.
-        const agent = new Agent({ tools: [new McpClient({ transport })] });
+        // ~~pair McpClient with StreamableHTTPClientTransport by hand~~ — NOT
+        // NEEDED. Verified against @strands-agents/sdk 1.18.0 on 2026-09-19:
+        // McpClient takes a `url` and builds the Streamable HTTP transport
+        // itself. The `transport` option remains for what that misses (stdio).
+        const client = new McpClient({ url: "http://127.0.0.1:4020/mcp" });
+        const agent = new Agent({ tools: await client.listTools() });
         ```
+      - **Step 1 DONE (2026-09-19): `packages/orchestrator`, model-free.**
+        `connectVouchToolset()` connects, lists, and pins the nine tool names.
+        Five tests assert the connection state, the exact tool list, that the
+        server's instructions arrive (the only in-band statement of how Vouch
+        expects to be used), and that an out-of-bounds purchase still reads as
+        `held_for_approval` *through the SDK's own result wrapping*. That last
+        one earns its place: a client that reshaped or swallowed a refusal
+        would let an agent proceed as though the purchase had succeeded, and
+        no test in `mcp-server` would catch it.
+      - **Deviation from §2, recorded per `CLAUDE.md` §3.** §2 puts the
+        orchestrator "server-side inside `web-app` (a Next.js/Vite API route)".
+        It is its own package instead. Reason: we use neither Next nor Vite,
+        and Strands pulls in ~35 packages including the Bedrock runtime —
+        keeping that out of the process that serves the console means the
+        dashboard still runs when the model provider is misconfigured. Risk:
+        one more package. Mitigation: `web-app` imports `@vouch/orchestrator`
+        when the chat arrives; no protocol or tool changes.
+      - **Flagged per §4 — Strands brings a second `zod`.** It resolves
+        `zod@4.6.5` nested under `packages/orchestrator` while the rest of the
+        repo is on `zod@3.25.76`, so npm cannot hoist it. Harmless today
+        because no Zod schema crosses that boundary. It will matter the moment
+        we use Strands' `ZodTool` or structured output, and the two majors are
+        not interchangeable. Recorded now so it is not a surprise then.
+      - **Useful for later:** `McpClient` also accepts `auth` (OAuth
+        client-credentials) and `headers`. If the Alexa+ add-on path in §7 ever
+        unblocks and `mcp-server` grows the OAuth 2.1 layer it requires, the
+        orchestrator reaches it through `auth` rather than a rewrite.
       - **Known risk on this decision:** Strands defaults to Amazon Bedrock (`BedrockModel`), and
         AWS access is not set up yet. It also supports Anthropic, OpenAI, Google and any Vercel AI
         SDK-compatible provider, so week 2 develops against one of those and switches the model
