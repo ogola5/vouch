@@ -137,15 +137,33 @@ polish (UI styling, edge-case handling for paths the demo doesn't exercise, extr
 — all real work, all worth cutting until the core loop (mandate → gate → Vouch → dispute →
 adjusted mandate) is solid end to end.
 
-## 7. Status checkpoints
+## 7. Small steps, each one explained and each one working
 
-After finishing a task from the week-by-week plan — not after every file — write a short status
-note: what changed, what's next, any new decisions or risks. Don't run silently through multiple
-plan items in one long stretch. This is what lets scope creep get caught while it's one paragraph
-of wasted work instead of a day of it.
+This is the rule the user cares about most, stated in their words: build in small steps, explain
+every step, and have it tested and working before moving on — so that the project can't reach
+week 5 with a critical part missing and need redoing, and so they understand what is happening
+inside their own idea as it is built.
 
-Concretely: three packages in one uninterrupted stretch is too long. One package, or one plan
-sub-item, then surface.
+**Step size.** One plan sub-item at a time. Three packages in one uninterrupted stretch is too
+long. If a step is big enough that its explanation would need more than the four headings below,
+it is two steps.
+
+**Nothing moves forward broken.** `npm run typecheck` and `npm test` both pass before the next
+step starts, and new behaviour arrives with a test that would fail without it. "I'll wire the
+test up afterwards" is how a critical gap reaches week 5. If a step can't be made to pass, stop
+and say so rather than building the next thing on top of it.
+
+**After every step, write these four, in this order:**
+
+1. **What I built** — plainly, and which `BUILD_PLAN.md` §3 item it satisfies.
+2. **Rules I applied and why** — the specific `CLAUDE.md` rules that shaped the work, and what
+   they changed about it. Where a rule said don't, say what wasn't built.
+3. **The architecture** — how the piece fits what already exists: what calls it, what it calls,
+   where the seam is. Name the files. Assume the reader is following the design, not the syntax.
+4. **Proof it works** — the command run and its real result. Test counts, not adjectives. If
+   something is untested or partly working, that goes here, not in a footnote.
+
+Then stop and let the user respond before starting the next step.
 
 ## 8. Ambiguity: stop and ask, don't build around a guess
 
