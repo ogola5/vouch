@@ -1,0 +1,26 @@
+{
+  // Typechecking pass for the test suites only.
+  //
+  // Tests are run by `node --test`, which executes .ts files directly via
+  // Node 24's native type stripping — that strips types, it does not check
+  // them, so without this config a test could reference a field that no
+  // longer exists and still "pass". This config is the checking half.
+  //
+  // It is separate from each package's build tsconfig because tests import
+  // source with explicit .ts extensions (Node does not rewrite ".js"
+  // specifiers to ".ts"), and allowImportingTsExtensions is only legal
+  // alongside noEmit. The build configs still include src/ only, so nothing
+  // with a .ts import is ever emitted.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // composite and noEmit are mutually exclusive; the base config turns
+    // composite on for the package build graph, which this pass is not part of.
+    "composite": false,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  // Only the test files are listed; the source they import is pulled in
+  // transitively and checked along with them.
+  "include": ["test/**/*.ts", "packages/*/test/**/*.ts"]
+}

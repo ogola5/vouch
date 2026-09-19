@@ -1,0 +1,25 @@
+{
+  "name": "vouch",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "The trust layer for what your AI agent actually did — not just what it says it will do.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "dev:mcp-server": "npm run dev --workspace packages/mcp-server",
+    "dev:mock-merchant": "npm run dev --workspace packages/mock-merchant",
+    "dev:web-app": "npm run dev --workspace packages/web-app",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "node --test \"test/**/*.test.ts\" \"packages/*/test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "declaration": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    // Required for TypeScript project references, which is how cross-package
+    // imports typecheck here. Each package references the packages it
+    // depends on, so `tsc -b` builds them in dependency order and
+    // "@vouch/shared" resolves to real declaration files. Without this,
+    // `npm run typecheck` on a clean checkout failed outright: every
+    // package's "types" points at dist/index.d.ts, which does not exist
+    // until something has been built.
+    "composite": true
+  }
+}

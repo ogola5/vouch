@@ -1,0 +1,10 @@
+{
+  // Solution-style config: no files of its own, just the build graph.
+  // `tsc -b` from the repo root builds every package in dependency order.
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/reasoning" },
+    { "path": "./packages/ring-integration" }
+  ]
+}

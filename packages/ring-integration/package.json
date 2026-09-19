@@ -1,0 +1,17 @@
+{
+  "name": "@vouch/ring-integration",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b tsconfig.json"
+  },
+  "dependencies": {
+    "@vouch/shared": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
