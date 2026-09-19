@@ -48,7 +48,8 @@ packages/
   db/                 SQLite persistence for mandates/vouches/disputes — done
   mock-merchant/      UCP session lifecycle + /.well-known/ucp + demo price control — done
   mcp-server/         MCP server; the one place allowed to gate a purchase — done
-  web-app/            Simulated Alexa+ chat + household dashboard — next (Strands orchestrator)
+  web-app/            Console: dashboard + demo controls over an MCP client — done
+                      (the Strands chat orchestrator slots in beside the bridge, still to come)
   fire-tv-app/        React Native household surface — week 5
 
 test/
@@ -63,21 +64,29 @@ packages/mcp-server/test/   gate-before-complete.test.ts — the gate is never b
 
 ## Running it
 
-Two services, in two WSL bash terminals (not Windows PowerShell):
+Three services. One terminal each, or `npm run dev:all` to start all three at once:
 
 ```bash
 npm install
-npm run dev:mock-merchant   # UCP merchant on :4010
-npm run dev:mcp-server      # Vouch MCP server on :4020/mcp
+npm run dev:mock-merchant   # UCP merchant       :4010
+npm run dev:mcp-server      # Vouch MCP server   :4020/mcp
+npm run dev:web-app         # Console (open this) :4030
 ```
 
-Trigger a price change the agent has to react to:
+Then open **http://127.0.0.1:4030** and walk the demo script:
 
-```bash
-curl -X POST http://127.0.0.1:4010/demo/price \
-  -H 'Content-Type: application/json' \
-  -d '{"product_id":"detergent-brand-a","price":12.49}'
-```
+1. **The world** — drop Brand A to `12.49`.
+2. **Mandates** — create the detergent mandate (one button). Watch the confidence threshold.
+3. **Propose a purchase** — Brand A at confidence `0.92` → it buys, and a Vouch appears.
+4. Propose **Brand C** ($27.80) → **held**, with `price > max_price` shown as the rule that
+   stopped it, and no order id. The checkout session really reached `ready_for_complete` and
+   stopped there.
+5. On the completed Vouch, click **"I didn't want that"** → the threshold moves 0.85 → 0.92.
+6. Propose Brand A again at confidence `0.88` → now **held**, on `below_confidence_threshold`.
+   Same purchase, same price. The agent's authority changed, not the product.
+
+The console calls the same MCP tools an agent calls — it has no logic of its own, so what it
+shows is what an agent would see.
 
 ## Checks
 
@@ -87,7 +96,7 @@ which is why there is no vitest/jest dependency here.
 
 ```bash
 npm run typecheck   # tsc -b across the package graph, then the test sources
-npm test            # 61 tests
+npm test            # 71 tests
 ```
 
 Two things that follow from running TypeScript directly, both of which cost time to rediscover:

@@ -1,374 +1,531 @@
-# Vouch — Build Plan
+    # Vouch — Build Plan
 
-Decision record and architecture, written to stay current as the project moves. Update it as
-decisions change rather than letting it drift out of sync with the code.
+    Decision record and architecture, written to stay current as the project moves. Update it as
+    decisions change rather than letting it drift out of sync with the code.
 
-## 1. Stack decisions (2026-09-17)
+    ## 1. Stack decisions (2026-09-17)
 
-- **Language: TypeScript everywhere.** MCP server, mock UCP merchant, web app, and Fire TV app
-  (React Native) all in one language. Matches the MCP TypeScript SDK and the
-  `hello-world-fire-tv-react-native` starter the brief points at, and lets `packages/shared`'s
-  Mandate/Vouch types be imported directly by every service instead of re-declared per language.
-- **Monorepo via npm workspaces.** No extra tooling (Turborepo/pnpm) needed at this scale — one
-  `npm install` at the root wires up all `packages/*`.
-- **External accounts (AWS Bedrock, Ring developer portal): neither is set up yet.** Rather than
-  block weeks 1-2 on account approval, every place that would call Bedrock or Ring is written
-  against an interface first:
-  - `ReasoningProvider` (`packages/reasoning`) — `explainVouch` and `adjustConfidenceThreshold`.
-    Implemented today by `RuleBasedReasoningProvider` (deterministic, no model call). Add
-    `BedrockReasoningProvider` once AWS access exists and swap it in at the composition root
-    (`packages/mcp-server`) — no caller changes.
-  - `PhysicalEvidenceProvider` (`packages/ring-integration`) — `correlateDelivery`. Implemented
-    today by `MockRingProvider`, which is deterministic and *scriptable* (`scriptOutcome(orderId,
-    "corroborated" | "unconfirmed")`) rather than random, so the demo can reliably show both
-    states as the guardrails require. Add `RealRingProvider` once the Ring developer portal
-    account and webhook are set up (Week 3 target) and swap it in the same way.
-  - **There is no "package delivered" webhook, and the architecture depends on saying so.**
-    Checked against Ring's published event list: the webhooks are `motion_detected`,
-    `button_press`, `device_added`, `device_removed`, `device_online`, `device_offline`,
-    `app_integration_added`/`removed` and `subscription_activated`/`deactivated`, HMAC-SHA256
-    signed, with classification data (human / animal / vehicle) on motion. Package detection is
-    a computer-vision capability, not a delivery-confirmation event you can subscribe to.
-    So `RealRingProvider` will correlate a **motion event against an expected delivery window** —
-    it will never receive a delivery confirmation, because none exists. State it in exactly those
-    words in the writeup and the demo: *Ring gives us a motion event at the door. We correlate it
-    against the window the order was expected in. That is correlation, not proof.* This is not a
-    limitation to work around; it is the honest claim the guardrails in section 4 already require,
-    and `MockRingProvider` is therefore a faithful stand-in rather than a weaker one.
-  - **Action item, once Ring portal access is granted:** re-check
-    `packages/ring-integration/src/types.ts` against the real payload. The request side
-    (`order_id`, `expected_around`, `window_minutes`) survives the event-list check, but the
-    response side does not yet carry what a real correlation needs — the event type and its
-    classification, so a vehicle-only motion is not silently treated as a person at the door.
-  - **~~Action item, do this before Week 2 (mock merchant)~~ — DONE (2026-09-17).** The UCP types
-    in `packages/shared/src/ucp.ts` are no longer provisional; they are written against the
-    published spec at [ucp.dev](https://ucp.dev/specification/checkout-rest/), REST binding,
-    snapshot `2026-04-08`. The guess was wrong in almost every particular, which is worth
-    recording because it is the strongest argument for doing this kind of check early:
-    - `session_id` → `id`; the invented `created`/`updated`/`complete`/`cancelled` status enum
-      → the real `incomplete`/`ready_for_complete`/`completed`/`canceled` (US spelling).
-    - Money is **ISO 4217 minor units** (`2500` is $25.00), not decimals. Mandates stay in major
-      units because humans author them; `toMajorUnits()` converts at the boundary. Getting this
-      wrong fails closed (everything gets held), not open — see the comment in `gate.ts`.
-    - A singular `payment_handler` → reverse-DNS-keyed `payment_handlers` in the `ucp` envelope,
-      plus a session-level `payment.instruments`.
-    - Whole objects were missing: `currency`, `buyer`, `totals`, `fulfillment`, `messages`, `links`,
-      `order`, and the `ucp` envelope itself.
-    - Required headers `UCP-Agent` (carrying the calling agent's profile URL), `Idempotency-Key`
-      and `Request-Id` were absent entirely.
-  - **Two findings from that spec read that change the architecture story:**
-    1. **`ready_for_complete` is a real spec state** meaning "everything satisfied, order not
-       placed". The mandate gate maps onto the `ready_for_complete → completed` transition
-       exactly. Say it this way in the writeup — it is far stronger than gating an invented
-       lifecycle.
-    2. **UCP defines its own MCP binding** with spec-fixed tool names (`search_catalog`,
-       `create_cart`, `create_checkout`, `complete_checkout`, `get_order`), advertised via
-       `/.well-known/ucp` alongside REST and A2A transports. This settles the "why two services"
-       question below: the merchant boundary is not an architectural preference, it is the spec
-       artifact. Those are the merchant's tools; Vouch's tools are a distinct layer in front.
-  - **Attribution correction, carried into the brief and README:** UCP is an open standard founded
-    by Google, Shopify, Etsy, Target and Wayfair. Amazon joined its Tech Council in April 2026,
-    alongside Meta, Microsoft, Salesforce and Stripe. The brief's "Amazon's own open UCP spec"
-    was wrong, and the judges are Amazon product and engineering leads who would know it.
-- **Alexa+ simulation: text chat, no voice.** A web chat UI stands in for the Alexa+ conversation.
-  Lower risk for a recorded demo than wiring the Web Speech API; can be revisited in week 4-5 if
-  there's spare time and the core loop is solid.
-- **Persistence: Node 24's built-in `node:sqlite`, not `better-sqlite3` (2026-09-19).** Same
-  reasoning that picked `node --test` over a test framework — the project is already on Node 24
-  for native type stripping, so use what that buys. `better-sqlite3` is a native module needing a
-  compile toolchain at install time, which on a Windows/WSL checkout is a reliable source of
-  "works on my machine". `DatabaseSync` is unflagged on Node 24 and was verified working here
-  before the package was written.
-- **Three constraints that Node 24's type stripping imposes on all source, learned the hard way
-  in week 2 (2026-09-19).** Stripping is *strip-only*: it erases type annotations but does not
-  transform syntax. That has consequences which cost real time to rediscover, so they are
-  recorded here rather than left to be re-hit in week 4:
-  1. **Constructor parameter properties are a runtime `SyntaxError`.** `constructor(private
-     readonly merchant: Merchant) {}` fails with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` in any file
-     Node executes directly — which includes every `npm run dev:*` entry point and every test.
-     Declare the field and assign it in the constructor body instead. The whole project avoids
-     the shorthand.
-  2. **Relative imports are written with a `.ts` extension**, with
-     `rewriteRelativeImportExtensions` in `tsconfig.base.json` turning them into `.js` on emit.
-     Node does not map a `./schema.js` specifier onto `schema.ts` the way ts-node or tsx would,
-     so `node src/main.ts` fails outright the moment a package has a real (non-type-only) import
-     between two of its own files. Week 1 never hit this because every relative import it had was
-     `import type` and was erased before Node saw it; `npm run dev:mock-merchant` and
-     `npm run dev:mcp-server` were both broken the first time they were run.
-  3. **Week 1's "`npm test` needs no build step" is reversed.** Tests now import workspace
-     packages by name (`@vouch/db`) rather than reaching into another package's `src/`, and
-     `npm test` runs `tsc -b` first. Two independent reasons force this: consequence (2) above
-     means a package's source cannot be loaded from `src/` at all once it has internal value
-     imports, and a class with a private field is *nominally* typed — a `VouchStore` built from
-     `../../db/src` is not assignable to the `@vouch/db` `VouchStore` in `VouchService`'s
-     signature. Testing what actually ships is the better default anyway;
-     `--enable-source-maps` keeps failures pointing at TypeScript line numbers.
-- **Confidence thresholds are rounded to 4 decimal places, not just clamped (2026-09-19).**
-  `0.85 + 0.07` is `0.9199999999999999` in binary floating point, and repeated adjustments
-  compound it. Harmless for the gate's comparison, but the value is persisted, returned over MCP
-  and shown on the Fire TV surface as the mandate's before/after state — "your threshold is now
-  0.9199999999999999" undercuts the one screen the demo is built to land. 4 places is far finer
-  than the smallest 0.02 step, so no decision changes.
+    - **Language: TypeScript everywhere.** MCP server, mock UCP merchant, web app, and Fire TV app
+      (React Native) all in one language. Matches the MCP TypeScript SDK and the
+      `hello-world-fire-tv-react-native` starter the brief points at, and lets `packages/shared`'s
+      Mandate/Vouch types be imported directly by every service instead of re-declared per language.
+    - **Monorepo via npm workspaces.** No extra tooling (Turborepo/pnpm) needed at this scale — one
+      `npm install` at the root wires up all `packages/*`.
+    - **External accounts (AWS Bedrock, Ring developer portal): neither is set up yet.** Rather than
+      block weeks 1-2 on account approval, every place that would call Bedrock or Ring is written
+      against an interface first:
+      - `ReasoningProvider` (`packages/reasoning`) — `explainVouch` and `adjustConfidenceThreshold`.
+        Implemented today by `RuleBasedReasoningProvider` (deterministic, no model call). Add
+        `BedrockReasoningProvider` once AWS access exists and swap it in at the composition root
+        (`packages/mcp-server`) — no caller changes.
+      - `PhysicalEvidenceProvider` (`packages/ring-integration`) — `correlateDelivery`. Implemented
+        today by `MockRingProvider`, which is deterministic and *scriptable* (`scriptOutcome(orderId,
+        "corroborated" | "unconfirmed")`) rather than random, so the demo can reliably show both
+        states as the guardrails require. Add `RealRingProvider` once the Ring developer portal
+        account and webhook are set up (Week 3 target) and swap it in the same way.
+      - **There is no "package delivered" webhook, and the architecture depends on saying so.**
+        Checked against Ring's published event list: the webhooks are `motion_detected`,
+        `button_press`, `device_added`, `device_removed`, `device_online`, `device_offline`,
+        `app_integration_added`/`removed` and `subscription_activated`/`deactivated`, HMAC-SHA256
+        signed, with classification data (human / animal / vehicle) on motion. Package detection is
+        a computer-vision capability, not a delivery-confirmation event you can subscribe to.
+        So `RealRingProvider` will correlate a **motion event against an expected delivery window** —
+        it will never receive a delivery confirmation, because none exists. State it in exactly those
+        words in the writeup and the demo: *Ring gives us a motion event at the door. We correlate it
+        against the window the order was expected in. That is correlation, not proof.* This is not a
+        limitation to work around; it is the honest claim the guardrails in section 4 already require,
+        and `MockRingProvider` is therefore a faithful stand-in rather than a weaker one.
+      - **Action item, once Ring portal access is granted:** re-check
+        `packages/ring-integration/src/types.ts` against the real payload. The request side
+        (`order_id`, `expected_around`, `window_minutes`) survives the event-list check, but the
+        response side does not yet carry what a real correlation needs — the event type and its
+        classification, so a vehicle-only motion is not silently treated as a person at the door.
+      - **~~Action item, do this before Week 2 (mock merchant)~~ — DONE (2026-09-17).** The UCP types
+        in `packages/shared/src/ucp.ts` are no longer provisional; they are written against the
+        published spec at [ucp.dev](https://ucp.dev/specification/checkout-rest/), REST binding,
+        snapshot `2026-04-08`. The guess was wrong in almost every particular, which is worth
+        recording because it is the strongest argument for doing this kind of check early:
+        - `session_id` → `id`; the invented `created`/`updated`/`complete`/`cancelled` status enum
+          → the real `incomplete`/`ready_for_complete`/`completed`/`canceled` (US spelling).
+        - Money is **ISO 4217 minor units** (`2500` is $25.00), not decimals. Mandates stay in major
+          units because humans author them; `toMajorUnits()` converts at the boundary. Getting this
+          wrong fails closed (everything gets held), not open — see the comment in `gate.ts`.
+        - A singular `payment_handler` → reverse-DNS-keyed `payment_handlers` in the `ucp` envelope,
+          plus a session-level `payment.instruments`.
+        - Whole objects were missing: `currency`, `buyer`, `totals`, `fulfillment`, `messages`, `links`,
+          `order`, and the `ucp` envelope itself.
+        - Required headers `UCP-Agent` (carrying the calling agent's profile URL), `Idempotency-Key`
+          and `Request-Id` were absent entirely.
+      - **Two findings from that spec read that change the architecture story:**
+        1. **`ready_for_complete` is a real spec state** meaning "everything satisfied, order not
+          placed". The mandate gate maps onto the `ready_for_complete → completed` transition
+          exactly. Say it this way in the writeup — it is far stronger than gating an invented
+          lifecycle.
+        2. **UCP defines its own MCP binding** with spec-fixed tool names (`search_catalog`,
+          `create_cart`, `create_checkout`, `complete_checkout`, `get_order`), advertised via
+          `/.well-known/ucp` alongside REST and A2A transports. This settles the "why two services"
+          question below: the merchant boundary is not an architectural preference, it is the spec
+          artifact. Those are the merchant's tools; Vouch's tools are a distinct layer in front.
+      - **Attribution correction, carried into the brief and README:** UCP is an open standard founded
+        by Google, Shopify, Etsy, Target and Wayfair. Amazon joined its Tech Council in April 2026,
+        alongside Meta, Microsoft, Salesforce and Stripe. The brief's "Amazon's own open UCP spec"
+        was wrong, and the judges are Amazon product and engineering leads who would know it.
+    - **Alexa+ simulation: text chat, no voice.** A web chat UI stands in for the Alexa+ conversation.
+      Lower risk for a recorded demo than wiring the Web Speech API; can be revisited in week 4-5 if
+      there's spare time and the core loop is solid.
+    - **Persistence: Node 24's built-in `node:sqlite`, not `better-sqlite3` (2026-09-19).** Same
+      reasoning that picked `node --test` over a test framework — the project is already on Node 24
+      for native type stripping, so use what that buys. `better-sqlite3` is a native module needing a
+      compile toolchain at install time, which on a Windows/WSL checkout is a reliable source of
+      "works on my machine". `DatabaseSync` is unflagged on Node 24 and was verified working here
+      before the package was written.
+    - **Three constraints that Node 24's type stripping imposes on all source, learned the hard way
+      in week 2 (2026-09-19).** Stripping is *strip-only*: it erases type annotations but does not
+      transform syntax. That has consequences which cost real time to rediscover, so they are
+      recorded here rather than left to be re-hit in week 4:
+      1. **Constructor parameter properties are a runtime `SyntaxError`.** `constructor(private
+        readonly merchant: Merchant) {}` fails with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` in any file
+        Node executes directly — which includes every `npm run dev:*` entry point and every test.
+        Declare the field and assign it in the constructor body instead. The whole project avoids
+        the shorthand.
+      2. **Relative imports are written with a `.ts` extension**, with
+        `rewriteRelativeImportExtensions` in `tsconfig.base.json` turning them into `.js` on emit.
+        Node does not map a `./schema.js` specifier onto `schema.ts` the way ts-node or tsx would,
+        so `node src/main.ts` fails outright the moment a package has a real (non-type-only) import
+        between two of its own files. Week 1 never hit this because every relative import it had was
+        `import type` and was erased before Node saw it; `npm run dev:mock-merchant` and
+        `npm run dev:mcp-server` were both broken the first time they were run.
+      3. **Week 1's "`npm test` needs no build step" is reversed.** Tests now import workspace
+        packages by name (`@vouch/db`) rather than reaching into another package's `src/`, and
+        `npm test` runs `tsc -b` first. Two independent reasons force this: consequence (2) above
+        means a package's source cannot be loaded from `src/` at all once it has internal value
+        imports, and a class with a private field is *nominally* typed — a `VouchStore` built from
+        `../../db/src` is not assignable to the `@vouch/db` `VouchStore` in `VouchService`'s
+        signature. Testing what actually ships is the better default anyway;
+        `--enable-source-maps` keeps failures pointing at TypeScript line numbers.
+    - **Confidence thresholds are rounded to 4 decimal places, not just clamped (2026-09-19).**
+      `0.85 + 0.07` is `0.9199999999999999` in binary floating point, and repeated adjustments
+      compound it. Harmless for the gate's comparison, but the value is persisted, returned over MCP
+      and shown on the Fire TV surface as the mandate's before/after state — "your threshold is now
+      0.9199999999999999" undercuts the one screen the demo is built to land. 4 places is far finer
+      than the smallest 0.02 step, so no decision changes.
 
-## 2. Architecture
+    ## 2. Architecture
 
-```
-   web-app (chat UI)                     Fire TV app (React Native)
-        │  types household message            │  household dashboard view
-        ▼                                       │  (completed/pending/disputed,
-   orchestrator  ──(MCP client, Streamable HTTP)─┘   mandate before/after state)
-   (server-side in web-app;                │
-    plays the role of "the Alexa+ agent")  │
-        │                                  │
-        ▼                                  │
-   packages/mcp-server  ◄────────────────────
-     - create_mandate / get_mandate / list_mandates
-     - propose_purchase   <-- THE GATE: calls evaluateProposal()
-                               from packages/shared BEFORE any UCP
-                               session is allowed to reach Complete
-     - record_dispute     <-- drives ReasoningProvider.adjustConfidenceThreshold
-     - list_vouches
-        │                          │
-        ▼                          ▼
-   packages/mock-merchant     packages/db (SQLite)
-     UCP session lifecycle:     mandates, vouches, disputes
-     Create -> Update ->
-     Complete | Cancel
-        │
-        ▼
-   Vouch written (packages/shared Vouch schema), evidence filled in:
-     digital  <- from the UCP session itself
-     physical <- packages/ring-integration PhysicalEvidenceProvider.correlateDelivery()
-     explanation text <- packages/reasoning ReasoningProvider.explainVouch()
-```
+    ```
+      web-app (chat UI)                     Fire TV app (React Native)
+            │  types household message            │  household dashboard view
+            ▼                                       │  (completed/pending/disputed,
+      orchestrator  ──(MCP client, Streamable HTTP)─┘   mandate before/after state)
+      (server-side in web-app;                │
+        plays the role of "the Alexa+ agent")  │
+            │                                  │
+            ▼                                  │
+      packages/mcp-server  ◄────────────────────
+        - create_mandate / get_mandate / list_mandates
+        - propose_purchase   <-- THE GATE: calls evaluateProposal()
+                                  from packages/shared BEFORE any UCP
+                                  session is allowed to reach Complete
+        - record_dispute     <-- drives ReasoningProvider.adjustConfidenceThreshold
+        - list_vouches
+            │                          │
+            ▼                          ▼
+      packages/mock-merchant     packages/db (SQLite)
+        UCP session lifecycle:     mandates, vouches, disputes
+        Create -> Update ->
+        Complete | Cancel
+            │
+            ▼
+      Vouch written (packages/shared Vouch schema), evidence filled in:
+        digital  <- from the UCP session itself
+        physical <- packages/ring-integration PhysicalEvidenceProvider.correlateDelivery()
+        explanation text <- packages/reasoning ReasoningProvider.explainVouch()
+    ```
 
-**Why MCP server and mock merchant are two separate services, not one:** the brief's single
-highest-leverage decision is "the mandate check must be a real gate before Complete fires — not
-a caption added after the fact." Keeping them as separate network boundaries (the MCP server must
-make an outbound call to the merchant to reach Complete) makes that structurally true and easy to
-verify in a code walkthrough, rather than relying on internal call-order discipline inside one
-process.
+    **Why MCP server and mock merchant are two separate services, not one:** the brief's single
+    highest-leverage decision is "the mandate check must be a real gate before Complete fires — not
+    a caption added after the fact." Keeping them as separate network boundaries (the MCP server must
+    make an outbound call to the merchant to reach Complete) makes that structurally true and easy to
+    verify in a code walkthrough, rather than relying on internal call-order discipline inside one
+    process.
 
-**This was challenged in review and survives, on better grounds than originally stated.** The
-objection is fair on its own terms: a single well-tested function that every path to Complete
-must call through gives the same guarantee without two services to run during a demo recording.
-But it misses what the merchant boundary actually is here. UCP publishes its own MCP binding and
-`.well-known/ucp` discovery document, so a conformant merchant is a *spec artifact* with a
-published surface — its tool names are fixed by the specification, not chosen by us. Collapsing
-it into a function inside the MCP server would delete the thing that makes "we implemented the
-real published spec, both sides" checkable. Keep the split. The demo-fragility concern is real
-and gets answered with process supervision, not by merging the services.
+    **This was challenged in review and survives, on better grounds than originally stated.** The
+    objection is fair on its own terms: a single well-tested function that every path to Complete
+    must call through gives the same guarantee without two services to run during a demo recording.
+    But it misses what the merchant boundary actually is here. UCP publishes its own MCP binding and
+    `.well-known/ucp` discovery document, so a conformant merchant is a *spec artifact* with a
+    published surface — its tool names are fixed by the specification, not chosen by us. Collapsing
+    it into a function inside the MCP server would delete the thing that makes "we implemented the
+    real published spec, both sides" checkable. Keep the split. The demo-fragility concern is real
+    and gets answered with process supervision, not by merging the services.
 
-**Who plays "the Alexa+ agent"?** The brief's diagram shows Alexa+ as simulated per track
-guidance. Concretely: an orchestrator running server-side inside `web-app` (a Next.js/Vite API
-route), built on the Strands Agents TypeScript SDK, holds an MCP *client* connected to
-`packages/mcp-server`'s Streamable HTTP endpoint. It turns the household's chat message into
-tool calls (`create_mandate` for "keep detergent stocked
-under $15 monthly"; `propose_purchase` when a simulated price-drop event fires). This orchestrator
-is intentionally thin — it is not where the mandate gate lives; the gate lives in the MCP server
-so that no other future client (Fire TV, a future real Alexa+ integration) could route around it.
+    **Who plays "the Alexa+ agent"?** The brief's diagram shows Alexa+ as simulated per track
+    guidance. Concretely: an orchestrator running server-side inside `web-app` (a Next.js/Vite API
+    route), built on the Strands Agents TypeScript SDK, holds an MCP *client* connected to
+    `packages/mcp-server`'s Streamable HTTP endpoint. It turns the household's chat message into
+    tool calls (`create_mandate` for "keep detergent stocked
+    under $15 monthly"; `propose_purchase` when a simulated price-drop event fires). This orchestrator
+    is intentionally thin — it is not where the mandate gate lives; the gate lives in the MCP server
+    so that no other future client (Fire TV, a future real Alexa+ integration) could route around it.
 
-**Known scope cut: household multi-user visibility.** A Vouch today is scoped to the account
-that holds the mandate. The stronger version of this product is one where any household member
-can see and question an agent's purchase, not just the account holder — a Receipt only one person
-can read is a weaker accountability claim, since the people most affected by a bad autonomous
-purchase are often not the ones who set the mandate. **This is cut for the five-week scope, not
-overlooked.** It needs an identity model, per-member permissions on dispute and pause, and a
-sharing story on the Fire TV surface — realistically a week on its own, and it would come out of
-the adaptive loop, which is the actual differentiator. Named here as a decision, and worth one
-line in the submission writeup as a known next step; it is a better answer in review than
-silence, and it shows the household framing was thought through rather than assumed.
+    **Known scope cut: household multi-user visibility.** A Vouch today is scoped to the account
+    that holds the mandate. The stronger version of this product is one where any household member
+    can see and question an agent's purchase, not just the account holder — a Receipt only one person
+    can read is a weaker accountability claim, since the people most affected by a bad autonomous
+    purchase are often not the ones who set the mandate. **This is cut for the five-week scope, not
+    overlooked.** It needs an identity model, per-member permissions on dispute and pause, and a
+    sharing story on the Fire TV surface — realistically a week on its own, and it would come out of
+    the adaptive loop, which is the actual differentiator. Named here as a decision, and worth one
+    line in the submission writeup as a known next step; it is a better answer in review than
+    silence, and it shows the household framing was thought through rather than assumed.
 
-**Simulating "the world" (price drops, deliveries):** there's no live merchant with real price
-changes, so week 2 needs a small demo-control surface — a panel in `web-app` (or a CLI script)
-that lets you trigger "price of Brand A detergent drops to $12.49" or "price of Brand C jumps to
-$27.80," which the orchestrator picks up and runs through the real gate. This is what makes step
-2 and step 3 of the demo script (brief section 8) actually live rather than narrated.
+    **Simulating "the world" (price drops, deliveries):** there's no live merchant with real price
+    changes, so week 2 needs a small demo-control surface — a panel in `web-app` (or a CLI script)
+    that lets you trigger "price of Brand A detergent drops to $12.49" or "price of Brand C jumps to
+    $27.80," which the orchestrator picks up and runs through the real gate. This is what makes step
+    2 and step 3 of the demo script (brief section 8) actually live rather than narrated.
 
-## 3. Week-by-week (revised from the brief's section 7 for the stack/account decisions above)
+    ## 3. Week-by-week (revised from the brief's section 7 for the stack/account decisions above)
 
-1. **Week 1 — Mandate model.** ✅ Done this session: `packages/shared` (Mandate, Vouch, UCP
-   types, `evaluateProposal` gate logic, all Zod-validated), `packages/reasoning` and
-   `packages/ring-integration` interfaces + deterministic stubs. **Also done: the test suite** —
-   22 tests, run by `node --test` on Node 24's native type stripping, so no test framework was
-   added (`npm test`, no build step; `npm run typecheck` is the separate checking half, because
-   type stripping executes types without checking them).
-   - `packages/shared/test/gate.test.ts` locks down fail-closed behaviour on unrecognized and
-     malformed rules, paused mandates, and the price/quantity/confidence boundaries.
-   - `test/adaptive-loop.test.ts` covers the differentiating mechanism end to end: a dispute
-     raises `confidence_threshold`, and the *identical* borderline proposal that passed before
-     is now held. It also pins the asymmetry — one dispute (+0.07) takes four undisputed streaks
-     (−0.02 each) to undo — and that the threshold can never be driven to a range where the
-     mandate becomes either unusable or a no-op.
-   - **Design change this forced:** `confidence_threshold` was decorative. Nothing read it —
-     `evaluateProposal` never saw a confidence value, so "a dispute changes what the agent may do
-     next" was not expressible, let alone testable. `PurchaseProposal` now carries a required
-     `confidence`, and the gate synthesises a `below_confidence_threshold` rule. Required rather
-     than optional so the fail-closed decision is forced at each call site instead of defaulted
-     silently. **Reviewed and kept (2026-09-17).** The real objection is that `evaluateProposal`
-     now has two jobs — mandate bounds and confidence — and a purist would split them. Keeping
-     them together wins for now because the gate's contract is "may this purchase proceed", and
-     a caller that had to consult two gates could consult only one. Revisit if a third concern
-     wants in; at that point it becomes a pipeline of checks rather than one function, and the
-     `triggeredRules` array is already the right shape to carry that.
-2. **Week 2 — MCP server + mock UCP merchant + db + orchestrator on Strands.** ✅ **Three of the
-   four done this session; the Strands orchestrator is the one piece outstanding.** Built:
-   `packages/db` (SQLite via Node 24's built-in `node:sqlite`), `packages/mock-merchant` (UCP
-   session lifecycle, `/.well-known/ucp`, demo price control) and `packages/mcp-server` (nine
-   tools, Streamable HTTP). 61 tests pass, typecheck clean, both services boot and talk to each
-   other over HTTP.
-   - **The gate's position in the lifecycle, decided and worth defending in a walkthrough.** The
-     session is created and driven to `ready_for_complete` FIRST, and the gate runs on the
-     `ready_for_complete -> completed` transition. Refusing earlier would be easier and much
-     weaker evidence: "we never asked" proves nothing about whether the check works. Because the
-     gate runs last, a held purchase leaves a genuine UCP session parked at the spec state
-     meaning *every requirement satisfied, order not placed*, with its id on the Vouch — so the
-     demo can show the session sitting one call short of an order. `packages/mcp-server/test/
-     gate-before-complete.test.ts` asserts `completeSession` is never dialled, which is the claim;
-     asserting the result said "held" would have passed even if the order had been placed.
-   - **The price the gate compares is read off the merchant's session, never taken from the
-     caller.** An agent that could name its own price for the bounds check could authorise
-     anything. Brand is still caller-asserted, because UCP's item shape carries id/title/price and
-     no brand attribute — noted in `service.ts`, and it only feeds the softer `new_brand` rule.
-   - **`max_price` means UNIT price, not order total.** The brief's own demo buys 2 units at
-     $12.49 against a $15 mandate, so unit price is what the mandate language means there;
-     `quantity > N` is what bounds total exposure. Genuine ambiguity, resolved in one place.
-   - **New tool not in the original list: `approve_purchase`.** A held Vouch needed a way to
-     become an order once the household says yes, otherwise `ready_for_complete` is a dead end.
-     It deliberately does not re-run the gate — `requires_approval_if` means the purchase needs a
-     human, and this is that human — but it only works from `PendingApproval`, so it cannot be
-     used to skip the gate on a fresh proposal. There is still no tool that completes a checkout
-     directly, and a test asserts that stays true.
-   - **Undisputed streaks are counted at completion, with no dispute window.** A real deployment
-     would want a settling period before an action counts as trusted. Named here rather than
-     glossed; it is a one-line caveat in the writeup, not a hidden shortcut.
-   - **Decision (2026-09-17, moved forward from week 4): build the orchestrator on the Strands
-     Agents TypeScript SDK from the start, not on a hand-rolled MCP client loop.** Strands
-     TypeScript hit 1.0 with native MCP client support, so it replaces the loop rather than
-     wrapping it, and it makes the AWS Builder mini-challenge integration a fact in week 2
-     instead of a week-5 stretch goal. Deciding this in week 4, as originally written, would have
-     meant rewriting the loop plus re-testing everything downstream of it.
-     ```
-     npm install @strands-agents/sdk
-     ```
-     ```ts
-     import { Agent, McpClient } from "@strands-agents/sdk";
-     // Vouch's MCP server speaks Streamable HTTP, so pair McpClient with
-     // StreamableHTTPClientTransport from @modelcontextprotocol/sdk rather
-     // than the stdio transport the Strands docs use in their example.
-     const agent = new Agent({ tools: [new McpClient({ transport })] });
-     ```
-   - **Known risk on this decision:** Strands defaults to Amazon Bedrock (`BedrockModel`), and
-     AWS access is not set up yet. It also supports Anthropic, OpenAI, Google and any Vercel AI
-     SDK-compatible provider, so week 2 develops against one of those and switches the model
-     provider once the $150 credit lands. That swap is a constructor argument, not a rewrite —
-     which is the same interface-first reasoning used for `ReasoningProvider` and
-     `PhysicalEvidenceProvider` above. **If the credit request has not been filed yet, file it
-     before starting week 2**, because this decision makes it the critical path rather than a
-     nice-to-have.
-3. **Week 3 — Ring correlation + adaptive/dispute loop.** Swap in real Ring webhook
-   (`RealRingProvider`) once portal access exists; if it's still pending, keep demoing on
-   `MockRingProvider` — it's honest and scriptable, not a liability. Wire `record_dispute` to
-   call `ReasoningProvider.adjustConfidenceThreshold` and persist the new threshold + a
-   `Dispute` record on the Vouch.
-4. **Week 4 — Conversational query layer.** Orchestrator handles "what did you buy me this
-   month," "why didn't you buy the $27 one," "show me what was inferred vs. explicit" by calling
-   `list_vouches`/`get_mandate` and `ReasoningProvider.explainVouch`. ~~**Decision point:**
-   whether to rebuild the orchestrator on the Strands SDK.~~ **Resolved and moved to week 2** —
-   the orchestrator is built on Strands from the start, so this week is query-layer work only.
-5. **Week 5 — Fire TV dashboard, Bedrock swap-in (if AWS access has landed by then), demo video,
-   submission writeup.** The writeup must restate the "real vs. simulated" table in the README —
-   keep that table current as each provider gets a real implementation.
+    1. **Week 1 — Mandate model.** ✅ Done this session: `packages/shared` (Mandate, Vouch, UCP
+      types, `evaluateProposal` gate logic, all Zod-validated), `packages/reasoning` and
+      `packages/ring-integration` interfaces + deterministic stubs. **Also done: the test suite** —
+      22 tests, run by `node --test` on Node 24's native type stripping, so no test framework was
+      added (`npm test`, no build step; `npm run typecheck` is the separate checking half, because
+      type stripping executes types without checking them).
+      - `packages/shared/test/gate.test.ts` locks down fail-closed behaviour on unrecognized and
+        malformed rules, paused mandates, and the price/quantity/confidence boundaries.
+      - `test/adaptive-loop.test.ts` covers the differentiating mechanism end to end: a dispute
+        raises `confidence_threshold`, and the *identical* borderline proposal that passed before
+        is now held. It also pins the asymmetry — one dispute (+0.07) takes four undisputed streaks
+        (−0.02 each) to undo — and that the threshold can never be driven to a range where the
+        mandate becomes either unusable or a no-op.
+      - **Design change this forced:** `confidence_threshold` was decorative. Nothing read it —
+        `evaluateProposal` never saw a confidence value, so "a dispute changes what the agent may do
+        next" was not expressible, let alone testable. `PurchaseProposal` now carries a required
+        `confidence`, and the gate synthesises a `below_confidence_threshold` rule. Required rather
+        than optional so the fail-closed decision is forced at each call site instead of defaulted
+        silently. **Reviewed and kept (2026-09-17).** The real objection is that `evaluateProposal`
+        now has two jobs — mandate bounds and confidence — and a purist would split them. Keeping
+        them together wins for now because the gate's contract is "may this purchase proceed", and
+        a caller that had to consult two gates could consult only one. Revisit if a third concern
+        wants in; at that point it becomes a pipeline of checks rather than one function, and the
+        `triggeredRules` array is already the right shape to carry that.
+    2. **Week 2 — MCP server + mock UCP merchant + db + orchestrator on Strands.** ✅ **Three of the
+      four done this session; the Strands orchestrator is the one piece outstanding.** Built:
+      `packages/db` (SQLite via Node 24's built-in `node:sqlite`), `packages/mock-merchant` (UCP
+      session lifecycle, `/.well-known/ucp`, demo price control) and `packages/mcp-server` (nine
+      tools, Streamable HTTP). 61 tests pass, typecheck clean, both services boot and talk to each
+      other over HTTP.
+      - **The gate's position in the lifecycle, decided and worth defending in a walkthrough.** The
+        session is created and driven to `ready_for_complete` FIRST, and the gate runs on the
+        `ready_for_complete -> completed` transition. Refusing earlier would be easier and much
+        weaker evidence: "we never asked" proves nothing about whether the check works. Because the
+        gate runs last, a held purchase leaves a genuine UCP session parked at the spec state
+        meaning *every requirement satisfied, order not placed*, with its id on the Vouch — so the
+        demo can show the session sitting one call short of an order. `packages/mcp-server/test/
+        gate-before-complete.test.ts` asserts `completeSession` is never dialled, which is the claim;
+        asserting the result said "held" would have passed even if the order had been placed.
+      - **The price the gate compares is read off the merchant's session, never taken from the
+        caller.** An agent that could name its own price for the bounds check could authorise
+        anything. Brand is still caller-asserted, because UCP's item shape carries id/title/price and
+        no brand attribute — noted in `service.ts`, and it only feeds the softer `new_brand` rule.
+      - **`max_price` means UNIT price, not order total.** The brief's own demo buys 2 units at
+        $12.49 against a $15 mandate, so unit price is what the mandate language means there;
+        `quantity > N` is what bounds total exposure. Genuine ambiguity, resolved in one place.
+      - **New tool not in the original list: `approve_purchase`.** A held Vouch needed a way to
+        become an order once the household says yes, otherwise `ready_for_complete` is a dead end.
+        It deliberately does not re-run the gate — `requires_approval_if` means the purchase needs a
+        human, and this is that human — but it only works from `PendingApproval`, so it cannot be
+        used to skip the gate on a fresh proposal. There is still no tool that completes a checkout
+        directly, and a test asserts that stays true.
+      - **Undisputed streaks are counted at completion, with no dispute window.** A real deployment
+        would want a settling period before an action counts as trusted. Named here rather than
+        glossed; it is a one-line caveat in the writeup, not a hidden shortcut.
+      - **Decision (2026-09-17, moved forward from week 4): build the orchestrator on the Strands
+        Agents TypeScript SDK from the start, not on a hand-rolled MCP client loop.** Strands
+        TypeScript hit 1.0 with native MCP client support, so it replaces the loop rather than
+        wrapping it, and it makes the AWS Builder mini-challenge integration a fact in week 2
+        instead of a week-5 stretch goal. Deciding this in week 4, as originally written, would have
+        meant rewriting the loop plus re-testing everything downstream of it.
+        ```
+        npm install @strands-agents/sdk
+        ```
+        ```ts
+        import { Agent, McpClient } from "@strands-agents/sdk";
+        // Vouch's MCP server speaks Streamable HTTP, so pair McpClient with
+        // StreamableHTTPClientTransport from @modelcontextprotocol/sdk rather
+        // than the stdio transport the Strands docs use in their example.
+        const agent = new Agent({ tools: [new McpClient({ transport })] });
+        ```
+      - **Known risk on this decision:** Strands defaults to Amazon Bedrock (`BedrockModel`), and
+        AWS access is not set up yet. It also supports Anthropic, OpenAI, Google and any Vercel AI
+        SDK-compatible provider, so week 2 develops against one of those and switches the model
+        provider once the $150 credit lands. That swap is a constructor argument, not a rewrite —
+        which is the same interface-first reasoning used for `ReasoningProvider` and
+        `PhysicalEvidenceProvider` above. **If the credit request has not been filed yet, file it
+        before starting week 2**, because this decision makes it the critical path rather than a
+        nice-to-have.
+    3. **Week 3 — Ring correlation + adaptive/dispute loop.** Swap in real Ring webhook
+      (`RealRingProvider`) once portal access exists; if it's still pending, keep demoing on
+      `MockRingProvider` — it's honest and scriptable, not a liability. Wire `record_dispute` to
+      call `ReasoningProvider.adjustConfidenceThreshold` and persist the new threshold + a
+      `Dispute` record on the Vouch.
+    4. **Week 4 — Conversational query layer.** Orchestrator handles "what did you buy me this
+      month," "why didn't you buy the $27 one," "show me what was inferred vs. explicit" by calling
+      `list_vouches`/`get_mandate` and `ReasoningProvider.explainVouch`. ~~**Decision point:**
+      whether to rebuild the orchestrator on the Strands SDK.~~ **Resolved and moved to week 2** —
+      the orchestrator is built on Strands from the start, so this week is query-layer work only.
+    5. **Week 5 — Fire TV dashboard, Bedrock swap-in (if AWS access has landed by then), demo video,
+      submission writeup.** The writeup must restate the "real vs. simulated" table in the README —
+      keep that table current as each provider gets a real implementation.
 
-## 4. Guardrails carried forward from the brief (section 9) — don't relitigate these
+    ## 4. Guardrails carried forward from the brief (section 9) — don't relitigate these
 
-- Never claim Ring "proves" delivery — `correlation_status` is `corroborated` /
-  `unconfirmed` / `not_applicable`, never a boolean "delivered."
-- Never claim to have invented agent audit trails/receipts.
-- Never fabricate a precision/fit score.
-- State plainly, always, which parts are real vs. simulated (see README table).
+    - Never claim Ring "proves" delivery — `correlation_status` is `corroborated` /
+      `unconfirmed` / `not_applicable`, never a boolean "delivered."
+    - Never claim to have invented agent audit trails/receipts.
+    - Never fabricate a precision/fit score.
+    - State plainly, always, which parts are real vs. simulated (see README table).
 
-## 5. Resources & action items (from the official Devpost hackathon resources page, 2026-09-17)
+    ## 5. Resources & action items (from the official Devpost hackathon resources page, 2026-09-17)
 
-Confirms the brief's section 6 in every particular that overlaps; additions and concrete
-next actions below.
+    Confirms the brief's section 6 in every particular that overlaps; additions and concrete
+    next actions below.
 
-- **Request the $150 AWS credit now** (Devpost hackathon page has the credit request form). This
-  is now the critical path, not a nice-to-have: the week-2 Strands decision means Bedrock is the
-  intended model provider for the orchestrator *and* the unblock for a real
-  `BedrockReasoningProvider`. Both have working fallbacks, so nothing is blocked while the request
-  is pending — but every week it stays unfiled is a week of work done against a provider that has
-  to be switched later.
-- **AWS Builder mini-challenge covers more than Bedrock:** Bedrock, AgentCore, the Strands SDK,
-  Kiro, and SageMaker are all "documented integrations" that count. Vouch's entry is the Strands
-  orchestrator (week 2) plus `BedrockReasoningProvider` (week 5, or earlier if credits land).
-- **Amazon Devices Builder Tools is an MCP server for the coding assistant, not for Vouch's
-  runtime** — it adds Amazon device knowledge (crash analysis, perf profiling, doc search, guided
-  workflows) to whatever you're coding in, i.e. it would plug into this VS Code session, not into
-  `packages/mcp-server`. Requires a developer.amazon.com account to install; worth connecting once
-  you have one, particularly before the Ring (week 3) and Fire TV (week 5) work, since those are
-  the two pieces where device-specific guidance matters most.
-- **Ring:** two more reference docs beyond `ring-api-helloworld` — "Get started with Ring"
-  (configure/develop/certify/publish) and "Live apps and use cases" (what's already shipping). The
-  Ring Developer community has an active Q&A section specifically useful for webhook/auth edge
-  cases, matching the brief's advice to book office hours for exactly that.
-- **Fire TV:** `vega-tv-interfaces-sample` ("recommended TV UI patterns for focus, i18n,
-  navigation, and scrolling") is worth reading as a reference for the household dashboard's
-  focus/remote navigation even though we're forking `hello-world-fire-tv-react-native`, not this
-  one — the dashboard still needs correct D-pad focus behavior to feel native on a TV.
-- **Fire TV starter: stay on `hello-world-fire-tv-react-native`. Do not switch to
-  `react-native-multi-tv-helloworld`.** This has now been recommended twice in review and is
-  wrong for this machine, so the reasoning is recorded here to stop it recurring. The two
-  starters target different operating systems: `hello-world-fire-tv-react-native` is a Fire OS /
-  Android TV app (`npm run android`, Android TV emulator), while `react-native-multi-tv-helloworld`
-  targets **Vega OS**. The Vega Developer Tools require a native macOS or Ubuntu install —
-  [Windows and WSL are explicitly unsupported and untested](https://developer.amazon.com/docs/vega/0.24/install-vega-sdk).
-  Development here happens on Windows 11 with a WSL Ubuntu checkout, so switching starters would
-  *create* the blocker the recommendation warns about, rather than avoid it. The current choice
-  needs no Vega toolchain at all. One practical note for week 5: run the Android TV emulator from
-  Android Studio on the Windows side, not inside WSL, where emulator support is awkward. If a
-  Vega build ever becomes necessary, that is a native-Ubuntu-machine decision, not a starter
-  swap — and Fire TV is explicitly the secondary surface here, so it should not drive the stack.
-- **Bee (Wearable AI) track exists but is out of scope for Vouch** — noted for completeness, not
-  a fit for a household-purchase-trust product.
+    - **Request the $150 AWS credit now** (Devpost hackathon page has the credit request form). This
+      is now the critical path, not a nice-to-have: the week-2 Strands decision means Bedrock is the
+      intended model provider for the orchestrator *and* the unblock for a real
+      `BedrockReasoningProvider`. Both have working fallbacks, so nothing is blocked while the request
+      is pending — but every week it stays unfiled is a week of work done against a provider that has
+      to be switched later.
+    - **AWS Builder mini-challenge covers more than Bedrock:** Bedrock, AgentCore, the Strands SDK,
+      Kiro, and SageMaker are all "documented integrations" that count. Vouch's entry is the Strands
+      orchestrator (week 2) plus `BedrockReasoningProvider` (week 5, or earlier if credits land).
+    - **Amazon Devices Builder Tools is an MCP server for the coding assistant, not for Vouch's
+      runtime** — it adds Amazon device knowledge (crash analysis, perf profiling, doc search, guided
+      workflows) to whatever you're coding in, i.e. it would plug into this VS Code session, not into
+      `packages/mcp-server`. Requires a developer.amazon.com account to install; worth connecting once
+      you have one, particularly before the Ring (week 3) and Fire TV (week 5) work, since those are
+      the two pieces where device-specific guidance matters most.
+    - **Ring:** two more reference docs beyond `ring-api-helloworld` — "Get started with Ring"
+      (configure/develop/certify/publish) and "Live apps and use cases" (what's already shipping). The
+      Ring Developer community has an active Q&A section specifically useful for webhook/auth edge
+      cases, matching the brief's advice to book office hours for exactly that.
+    - **Fire TV:** `vega-tv-interfaces-sample` ("recommended TV UI patterns for focus, i18n,
+      navigation, and scrolling") is worth reading as a reference for the household dashboard's
+      focus/remote navigation even though we're forking `hello-world-fire-tv-react-native`, not this
+      one — the dashboard still needs correct D-pad focus behavior to feel native on a TV.
+    - **Fire TV starter: stay on `hello-world-fire-tv-react-native`. Do not switch to
+      `react-native-multi-tv-helloworld`.** This has now been recommended twice in review and is
+      wrong for this machine, so the reasoning is recorded here to stop it recurring. The two
+      starters target different operating systems: `hello-world-fire-tv-react-native` is a Fire OS /
+      Android TV app (`npm run android`, Android TV emulator), while `react-native-multi-tv-helloworld`
+      targets **Vega OS**. The Vega Developer Tools require a native macOS or Ubuntu install —
+      [Windows and WSL are explicitly unsupported and untested](https://developer.amazon.com/docs/vega/0.24/install-vega-sdk).
+      Development here happens on Windows 11 with a WSL Ubuntu checkout, so switching starters would
+      *create* the blocker the recommendation warns about, rather than avoid it. The current choice
+      needs no Vega toolchain at all. One practical note for week 5: run the Android TV emulator from
+      Android Studio on the Windows side, not inside WSL, where emulator support is awkward. If a
+      Vega build ever becomes necessary, that is a native-Ubuntu-machine decision, not a starter
+      swap — and Fire TV is explicitly the secondary surface here, so it should not drive the stack.
+    - **Bee (Wearable AI) track exists but is out of scope for Vouch** — noted for completeness, not
+      a fit for a household-purchase-trust product.
 
-## 6. Noticed, not scoped
+    ## 6. Noticed, not scoped
 
-Real improvements spotted while working, deliberately not built. Per `CLAUDE.md` §1, anything
-noticed mid-task that isn't a blocker for the current week-by-week item lands here as one line
-rather than getting implemented "while you're in the file". Revisit only when a week's plan
-actually calls for it, or after the core loop is solid end to end.
+    Real improvements spotted while working, deliberately not built. Per `CLAUDE.md` §1, anything
+    noticed mid-task that isn't a blocker for the current week-by-week item lands here as one line
+    rather than getting implemented "while you're in the file". Revisit only when a week's plan
+    actually calls for it, or after the core loop is solid end to end.
 
-- The mock merchant's `DEMO_TAX_RATE` is a flat 8.75% with no per-destination logic. Fine for the
-  demo; wrong for anything real.
-- `VouchService` hardcodes `DEMO_HOUSEHOLD` (email + shipping destination). A real system looks
-  this up per account, which is also where the cut household multi-user story (§2) would start.
-- `MockRingProvider.scriptOutcome` keys on `order_id`, which doesn't exist until the order does,
-  so scripting a corroborated outcome in advance needs an interception rather than a
-  pre-registration. Workable, slightly awkward — see `end-to-end.test.ts`.
-- `UcpTotal.type` is a loose `string` rather than a closed enum, pending a read of the UCP
-  OpenAPI schema. Deliberate: guessing a closed set here would reintroduce the exact failure the
-  ucp.ts rewrite fixed.
-- Declaration files emit `.ts` relative specifiers under `rewriteRelativeImportExtensions` while
-  the JavaScript correctly emits `.js`. TypeScript resolves this fine and typecheck passes, so it
-  costs nothing today; it would matter only if a non-TypeScript consumer ever read `dist/`.
+    - The mock merchant's `DEMO_TAX_RATE` is a flat 8.75% with no per-destination logic. Fine for the
+      demo; wrong for anything real.
+    - `VouchService` hardcodes `DEMO_HOUSEHOLD` (email + shipping destination). A real system looks
+      this up per account, which is also where the cut household multi-user story (§2) would start.
+    - `MockRingProvider.scriptOutcome` keys on `order_id`, which doesn't exist until the order does,
+      so scripting a corroborated outcome in advance needs an interception rather than a
+      pre-registration. Workable, slightly awkward — see `end-to-end.test.ts`.
+    - `UcpTotal.type` is a loose `string` rather than a closed enum, pending a read of the UCP
+      OpenAPI schema. Deliberate: guessing a closed set here would reintroduce the exact failure the
+      ucp.ts rewrite fixed.
+    - Declaration files emit `.ts` relative specifiers under `rewriteRelativeImportExtensions` while
+      the JavaScript correctly emits `.js`. TypeScript resolves this fine and typecheck passes, so it
+      costs nothing today; it would matter only if a non-TypeScript consumer ever read `dist/`.
+    - **`react-native-multi-tv-app-sample` is a third Fire TV starter, distinct from the
+      `react-native-multi-tv-helloworld` that §5 rejected (noted 2026-09-19).** The Devpost resources
+      page calls it "the most complete starter" and lists **Android TV** among its targets, not Vega
+      alone — so §5's rejection reasoning (Vega Developer Tools need native macOS or Ubuntu; Windows
+      and WSL are unsupported) may not apply to it. Not acted on: Fire TV is the secondary surface,
+      it is week-5 work, and the brief is explicit about not over-investing there. Worth five minutes
+      before week 5 begins, not now.
 
-## 7. Open questions — flagged for a second opinion, not silently decided
+    ## 7. Open questions — flagged for a second opinion, not silently decided
 
-Per `CLAUDE.md` §8: requirements that are genuinely unclear and whose resolution would touch a
-meaningful amount of code. Raise these rather than picking an interpretation and building on it.
+    Per `CLAUDE.md` §8: requirements that are genuinely unclear and whose resolution would touch a
+    meaningful amount of code. Raise these rather than picking an interpretation and building on it.
 
-- **What actually produces the `confidence` value on a `PurchaseProposal`? (opened 2026-09-19)**
-  `evaluateProposal` compares it against the mandate's `confidence_threshold`, and the adaptive
-  loop exists to move that threshold — so this number is the single most load-bearing input in
-  the system. Today the orchestrator asserts it and nothing validates it, which means the agent
-  effectively grades its own homework on the one value its authority depends on. Options, none
-  chosen: derive it from observable signals (price delta vs. history, brand match, recency of a
-  prior purchase) rather than letting the model state it; have the `ReasoningProvider` produce it
-  so the Bedrock swap covers it; or keep it caller-asserted and say so plainly in the writeup as
-  a known limitation. Blast radius is several files, so it wants a decision before week 4's query
-  layer leans on it.
-- **Is `brand` on a proposal trustworthy? (opened 2026-09-19)** Same shape of problem, smaller
-  stakes. UCP's item schema carries `id`, `title` and `price` but no brand attribute, so the
-  `new_brand` rule is evaluated against a caller-supplied string. Price is already read off the
-  merchant's session precisely so the agent cannot name its own; brand is the remaining gap.
+    - **What actually produces the `confidence` value on a `PurchaseProposal`? (opened 2026-09-19)**
+      `evaluateProposal` compares it against the mandate's `confidence_threshold`, and the adaptive
+      loop exists to move that threshold — so this number is the single most load-bearing input in
+      the system. Today the orchestrator asserts it and nothing validates it, which means the agent
+      effectively grades its own homework on the one value its authority depends on. Options, none
+      chosen: derive it from observable signals (price delta vs. history, brand match, recency of a
+      prior purchase) rather than letting the model state it; have the `ReasoningProvider` produce it
+      so the Bedrock swap covers it; or keep it caller-asserted and say so plainly in the writeup as
+      a known limitation. Blast radius is several files, so it wants a decision before week 4's query
+      layer leans on it.
+    - **Is `brand` on a proposal trustworthy? (opened 2026-09-19)** Same shape of problem, smaller
+      stakes. UCP's item schema carries `id`, `title` and `price` but no brand attribute, so the
+      `new_brand` rule is evaluated against a caller-supplied string. Price is already read off the
+      merchant's session precisely so the agent cannot name its own; brand is the remaining gap.
+
+    - **Simulate Alexa+, or become a real Alexa+ add-on? (opened 2026-09-19 — needs a decision
+      before the orchestrator is built)**
+
+      **The finding.** The Devpost resources page points at an **Alexa+ MCP Toolkit** that neither
+      the brief nor §5 of this plan knew about. Verified against the primary source today:
+      [overview](https://developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-overview.html) and
+      [quickstart](https://developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-quickstart.html).
+      An MCP server can be deployed as a genuine Alexa+ add-on and **tested in a web simulator, with
+      no physical device**. This reopens a decision §1 recorded as settled ("Alexa+ simulation: text
+      chat, no voice"), so it is flagged rather than acted on.
+
+      **What we already satisfy:** Streamable HTTP transport, and an MCP server defining tools.
+
+      **What it would additionally cost** — all infrastructure, none of it the differentiator:
+      - **OAuth 2.1 authorization code flow with PKCE (S256)**, a `401` without a `WWW-Authenticate`
+        header for unauthenticated requests, and Protected Resource Metadata published at
+        `/.well-known/oauth-authorization-server`. `packages/mcp-server` has no auth at all today.
+        This is the single largest item and the main reason this is a question rather than a plan.
+      - A **public remote URL** (cloudflared or similar tunnel in development).
+      - **Round-trip latency under 500 ms** — currently unmeasured.
+      - The **Alexa AI CLI** (`alexa-ai configure` / `new mcp` / `deploy`), an `addon.json`, 3-4
+        example phrases, privacy and terms URLs, icons in six sizes and a 600x900 carousel image.
+      - Optionally `@modelcontextprotocol/ext-apps` (MCP Apps) for in-conversation visual output.
+
+      **Why it might still be worth it.** The judging criteria lead with "real MCP server … not a
+      mockup" (brief §10). "This runs as an actual Alexa+ add-on, here it is in the simulator" is a
+      materially stronger claim than "we simulated Alexa+ with a web chat UI" — and the track
+      explicitly permits the weaker one, so nobody is forced to do this and most entrants will not.
+
+      **Why it is not a straight win.** It partly obsoletes the Strands orchestrator: if real Alexa+
+      is the agent, it picks our tools and the stand-in orchestrator has less to do. It also spends a
+      week on auth and asset plumbing during the window where the adaptive loop — the actual
+      differentiator — needs a visible surface.
+
+      **The three options, stated so a choice can be made rather than drifted into:**
+      - **A — Keep the recorded plan.** Strands orchestrator plus a web chat UI standing in for
+        Alexa+. Self-contained, no new accounts, lowest risk, weakest claim.
+      - **B — Go for the real add-on.** Strongest claim, highest risk, and the OAuth work is
+        load-bearing before anything is demonstrable.
+      - **C — Hybrid.** Real Alexa+ add-on for the conversational half (ask, explain, dispute), and
+        keep a Strands agent for the half Alexa+ structurally cannot do: watching for a price drop
+        and proposing a purchase with no human in the loop. Vouch's demo needs an agent that acts
+        *unprompted*; Alexa+ is conversational and would not. This also keeps the AWS Builder
+        mini-challenge entry intact.
+
+      **Recommended next action, whichever is chosen: a timeboxed spike, not a commitment.** Install
+      the Alexa AI CLI and get as far as `alexa-ai new mcp` against the existing server to find out
+      what the onboarding actually demands. The OAuth requirement is the thing that could eat a week;
+      it should be discovered in an afternoon, before the orchestrator is built on either assumption.
+
+      **DECIDED 2026-09-19: Option B — build the real Alexa+ add-on.** Chosen by the project owner
+      after the trade-off above was written. The recommendation had been C; B was chosen and is not
+      reopened. Note that C stays reachable without rework — a Strands agent driving autonomous
+      price-drop proposals can be added later against the same MCP tools, because the gate lives in
+      `packages/mcp-server` and not in any client.
+
+      **Verified prerequisites** (sources: [set up your development
+      environment](https://developer.amazon.com/docs/alexaplus/add-ons/set-up-your-development-environment.html),
+      [quickstart](https://developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-quickstart.html)):
+      - Alexa developer account (free, an existing Amazon account works) **and an AWS account with an
+        IAM user with programmatic access**. Note this promotes AWS from "critical path for Bedrock"
+        to a hard blocker for the primary track itself.
+      - Alexa App profile completed, including phone number and address.
+      - Node.js 24+ — already satisfied (24.21.0).
+      - `npm install -g @alexa-ai/cli`, then `alexa-ai configure` (browser LWA OAuth, credentials
+        land in `~/.alexa-ai/credentials`).
+      - **OS: macOS Sierra or higher, or Ubuntu.** WSL Ubuntu is not named either way; treat as a
+        small unknown to settle in the spike. This is the same class of constraint that ruled out the
+        Vega toolchain in §5, so it is worth checking early rather than assuming.
+
+      **The risk that could sink this option, to check FIRST (open, 2026-09-19):** the docs require
+      the account's **preferred marketplace and device language to be set to an Alexa+ supported
+      marketplace/locale**, and do not enumerate which those are. Alexa+ has rolled out US-first. If
+      the owner's Amazon marketplace is not supported, Option B may be unavailable regardless of
+      effort. This is a five-minute check and it gates everything else in B — do it before installing
+      anything.
+
+      **B PAUSED PENDING ELIGIBILITY, 2026-09-19 — the country list, now verified.** Raised by the
+      project owner and confirmed against Amazon's own newsroom
+      ([Alexa+ international launch](https://www.aboutamazon.com/news/devices/alexa-plus-international-launch),
+      [TechCrunch 2026-09-16](https://techcrunch.com/2026/09/16/amazon-launches-alexa-in-india-with-hindi-support/)).
+      Alexa+ is live in: **US, UK, Canada, Mexico, Brazil, Germany, Austria, Spain, Italy, France,
+      Australia, and India** (India added 2026-09-16). Amazon's stated plan is "10+ additional
+      countries in 2027". **No African market appears on the list or in the near-term plan.**
+
+      This is evidence neither party had when B was chosen, so revisiting it is §5-compliant rather
+      than relitigation. The OAuth 2.1 work is **not** started until eligibility is settled: it is
+      the expensive item, and no amount of it fixes an ineligible marketplace.
+
+      **The distinction that decides this, and is not yet answered.** The docs gate on the account's
+      **marketplace**, not on the developer's physical location. Amazon operates **no Kenya
+      marketplace**, so a Kenyan customer's account typically already sits on `amazon.com` (US) with
+      a local delivery address. "The owner is in Kenya" therefore does not by itself imply "the
+      marketplace is unsupported" — two different facts, and only one of them gates the toolkit.
+      Unknown as of this entry; the owner's reported marketplace setting was not captured.
+
+      **Settle it with the CLI, not with more reading.** The onboarding itself reports eligibility:
+      ```
+      npm install -g @alexa-ai/cli
+      alexa-ai configure          # browser LWA login; writes ~/.alexa-ai/credentials
+      ```
+      Ten minutes, no project code touched, no OAuth written. `@alexa-ai/cli` is a **global developer
+      tool, not a runtime dependency** — flagged per `CLAUDE.md` §4, but it never enters any
+      `package.json` and cannot affect the demo.
+
+      **If eligibility fails, the fallback costs nothing in track standing.** The Alexa+ track states
+      outright: *"You can simulate an Alexa+ experience using your preferred agentic tools via a web
+      app."* Options A and C are the sanctioned path, not a consolation prize. What would be lost is
+      the "it is a real add-on" flourish, not eligibility. Record the outcome here as **attempted and
+      blocked, with the reason**, rather than quietly switching — a documented eligibility wall is a
+      better answer in review than silence, and it is precisely the developer-experience feedback the
+      hackathon explicitly asks entrants to submit.
+
+      **B BLOCKED — ATTEMPTED AND STOPPED ON HARD EVIDENCE, 2026-09-19.** The spike was run and did
+      not get past its first command. Two independent walls, either of which alone would be enough:
+
+      1. **The Alexa AI CLI is not publicly installable.** `npm view @alexa-ai/cli` returns a plain
+         404 on the public registry. Re-reading the setup page for the literal text explains why: the
+         package lives in a **private AWS CodeArtifact registry** requiring
+         `aws codeartifact login --tool npm --domain alexa-ai --repository npm-packages
+         --domain-owner 372468808636 --region us-west-2 --namespace @alexa-ai --profile alexa-ai`,
+         with an assumed role, and the page states the credentials are **provided by an "Alexa
+         Solutions Architect" during onboarding**. That is a controlled-access program, not a
+         self-serve install — no amount of engineering opens it, and it cannot be assumed to arrive
+         inside a five-week window.
+      2. **The marketplace/locale requirement** recorded above, with no African market on Alexa+'s
+         live list or its stated 2027 plan.
+
+      **⚠️ Supply-chain warning, recorded because the near-miss is easy.** There IS a public npm
+      package called **`alexa-ai` (v2.5.0)** — it is an unrelated third-party WhatsApp chatbot, not
+      Amazon's tool. Anyone hitting the 404 on `@alexa-ai/cli` and "helpfully" retrying without the
+      scope would install a stranger's package globally. Do not. The Amazon CLI is `@alexa-ai/cli`
+      from CodeArtifact and nothing else. (`ask-cli` v2.30.7 is real but is the legacy Alexa Skills
+      Kit CLI — a different product, not the add-on toolkit.)
+
+      **Resolution: fall back to Option C, now.** This is not a retreat from B on preference; B was
+      tried and is gated by access we do not have. C was the original recommendation and the MCP
+      server is unchanged either way, so nothing built so far is wasted. Concretely: the Strands
+      orchestrator plus a web chat UI standing in for Alexa+, which the track sanctions in as many
+      words, and a Strands agent for the autonomous price-drop proposal that Alexa+ would not do.
+
+      **Two things to carry forward rather than drop:**
+      - **Ask about add-on access at office hours.** If a Solutions Architect can enrol this project,
+        B becomes additive rather than a rewrite — same MCP server, plus OAuth and a deploy. Worth
+        one question; not worth planning around.
+      - **This is submittable feedback.** The hackathon explicitly asks where the developer
+        experience fell short. "The Alexa+ track's headline path requires a CLI behind a private
+        registry gated on Solutions Architect onboarding, and the docs do not say so until the
+        environment-setup page" is precise, true, and useful to the team that owns it.

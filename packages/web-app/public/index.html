@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vouch Console</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --ink: #1b1a17;
+    --muted: #6b6862;
+    --line: #e2e0da;
+    --accent: #2f5d50;
+    --accent-ink: #ffffff;
+    --ok: #2f6b4f;
+    --ok-bg: #e6f2ea;
+    --hold: #8a5a12;
+    --hold-bg: #fdf0da;
+    --bad: #8d3030;
+    --bad-bg: #fae8e8;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16171a;
+      --panel: #1e2024;
+      --ink: #eceae5;
+      --muted: #9a968e;
+      --line: #2e3137;
+      --accent: #6fae99;
+      --accent-ink: #12211c;
+      --ok: #7cc3a0;
+      --ok-bg: #1d2e26;
+      --hold: #e0b165;
+      --hold-bg: #322818;
+      --bad: #e08c8c;
+      --bad-bg: #331f1f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16171a; --panel: #1e2024; --ink: #eceae5; --muted: #9a968e;
+    --line: #2e3137; --accent: #6fae99; --accent-ink: #12211c;
+    --ok: #7cc3a0; --ok-bg: #1d2e26; --hold: #e0b165; --hold-bg: #322818;
+    --bad: #e08c8c; --bad-bg: #331f1f;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
+
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .tag { font-size: 13px; color: var(--muted); }
+  .status { margin-left: auto; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.up { background: var(--ok); }
+  .dot.down { background: var(--bad); }
+
+  .lede { color: var(--muted); font-size: 14px; margin: 8px 0 24px; max-width: 70ch; }
+
+  section { background: var(--panel); border: 1px solid var(--line);
+            border-radius: var(--radius); padding: 18px; margin-bottom: 18px; }
+  h2 { font-size: 15px; margin: 0 0 4px; letter-spacing: -0.005em; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0 0 14px; max-width: 72ch; }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 13px; background: var(--bg); }
+  .card h3 { font-size: 14px; margin: 0 0 3px; }
+  .card .sub { font-size: 12.5px; color: var(--muted); }
+
+  label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea {
+    width: 100%; padding: 8px 10px; font: inherit; font-size: 14px;
+    color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 7px;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .row { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); align-items: end; }
+
+  button {
+    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.small { padding: 5px 10px; font-size: 13px; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .badge { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px;
+           border-radius: 999px; letter-spacing: 0.01em; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.hold { background: var(--hold-bg); color: var(--hold); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad); }
+  .badge.plain { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+
+  .chip { display: inline-block; font-size: 11.5px; font-family: ui-monospace, monospace;
+          background: var(--hold-bg); color: var(--hold);
+          padding: 2px 7px; border-radius: 5px; margin: 2px 4px 2px 0; }
+
+  .threshold { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .threshold .delta { font-size: 13px; font-weight: 500; }
+  .up-arrow { color: var(--bad); }
+  .down-arrow { color: var(--ok); }
+
+  .vouch { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 10px; background: var(--bg); }
+  .vouch-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .vouch-title { font-weight: 600; }
+  .price { font-variant-numeric: tabular-nums; }
+  .meta { font-size: 12.5px; color: var(--muted); }
+  .actions { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
+
+  .explain { margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--accent);
+             background: var(--panel); border-radius: 0 6px 6px 0; font-size: 14px; }
+
+  .empty { color: var(--muted); font-size: 14px; font-style: italic; padding: 6px 0; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px;
+           background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px;
+           font-size: 14px; max-width: 90vw; z-index: 50; }
+  .toast.err { background: var(--bad); color: #fff; }
+  .note { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line);
+          padding-top: 10px; margin-top: 14px; }
+  code { font-family: ui-monospace, monospace; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Vouch Console</h1>
+    <span class="tag">household trust layer &middot; demo control</span>
+    <span class="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
+  </header>
+  <p class="lede">
+    Everything here goes through the same MCP tools an agent calls. Nothing on this page
+    decides anything — the gate lives in the server, so what you see is what an agent sees.
+  </p>
+
+  <!-- 1. THE WORLD -->
+  <section>
+    <h2>1. The world</h2>
+    <p class="hint">
+      The merchant's catalogue. Change a price and the agent has to react to a number it
+      didn't choose — this is what makes the demo live rather than narrated.
+    </p>
+    <div class="grid" id="catalog"><div class="empty">loading…</div></div>
+  </section>
+
+  <!-- 2. MANDATES -->
+  <section>
+    <h2>2. Mandates — what the agent is allowed to do</h2>
+    <p class="hint">
+      The confidence threshold is the number the adaptive loop moves. Watch it after a dispute.
+    </p>
+    <div class="grid" id="mandates"><div class="empty">loading…</div></div>
+    <div class="note" id="noMandate" hidden>
+      No mandate yet. <button class="small primary" id="seedBtn">Create the detergent mandate</button>
+      &mdash; goal “Keep laundry detergent stocked”, max $15, Brand A preferred, threshold 0.85.
+    </div>
+  </section>
+
+  <!-- 3. PROPOSE -->
+  <section>
+    <h2>3. Propose a purchase</h2>
+    <p class="hint">
+      This is the gate. The server opens a real UCP checkout session, drives it to
+      <code>ready_for_complete</code>, then decides whether it may become an order.
+      Price is read from the merchant, never from this form.
+    </p>
+    <div class="row">
+      <div><label for="pMandate">Mandate</label><select id="pMandate"></select></div>
+      <div><label for="pProduct">Product</label><select id="pProduct"></select></div>
+      <div><label for="pQty">Quantity</label><input id="pQty" type="number" min="1" value="1" /></div>
+      <div><label for="pConf">Agent confidence</label><input id="pConf" type="number" min="0" max="1" step="0.01" value="0.92" /></div>
+      <div><label for="pReason">Reason</label><input id="pReason" value="price_drop, preferred_brand" /></div>
+      <div><button class="primary" id="proposeBtn">Propose</button></div>
+    </div>
+    <div id="proposeResult"></div>
+  </section>
+
+  <!-- 4. THE RECORD -->
+  <section>
+    <h2>4. The record — what the agent actually did</h2>
+    <p class="hint">
+      Completed, held and disputed actions together. A held purchase left a real checkout
+      session parked one call short of an order.
+    </p>
+    <div id="vouches"><div class="empty">loading…</div></div>
+    <div class="note">
+      <strong>On the doorstep evidence:</strong> Ring publishes no “package delivered” event.
+      <code>corroborated</code> means a motion event fell inside the window the order was
+      expected in — correlation, never proof. <code>unconfirmed</code> means no such event yet.
+      <code>not_applicable</code> means nothing was bought.
+    </div>
+  </section>
+
+</div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+let state = { mandates: [], vouches: [], catalog: [] };
+let lastThresholds = new Map();
+
+function toast(msg, isError = false) {
+  const el = document.createElement("div");
+  el.className = "toast" + (isError ? " err" : "");
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), isError ? 6000 : 3200);
+}
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || body.text || `${path} → ${res.status}`);
+  return body;
+}
+
+const callTool = (name, args) =>
+  api(`/api/tool/${encodeURIComponent(name)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args ?? {}),
+  });
+
+function money(n) { return "$" + Number(n).toFixed(2); }
+
+function statusBadge(status) {
+  if (status === "Complete") return '<span class="badge ok">Complete</span>';
+  if (status === "PendingApproval") return '<span class="badge hold">Held for approval</span>';
+  if (status === "Cancelled") return '<span class="badge bad">Cancelled</span>';
+  return `<span class="badge plain">${status}</span>`;
+}
+
+function correlationBadge(status) {
+  if (status === "corroborated") return '<span class="badge ok">Ring: corroborated</span>';
+  if (status === "unconfirmed") return '<span class="badge plain">Ring: unconfirmed</span>';
+  return '<span class="badge plain">Ring: not applicable</span>';
+}
+
+/* ---------- rendering ---------- */
+
+function renderCatalog() {
+  const el = $("catalog");
+  if (!state.catalog.length) { el.innerHTML = '<div class="empty">no products</div>'; return; }
+  el.innerHTML = state.catalog.map((p) => `
+    <div class="card">
+      <h3>${p.title}</h3>
+      <div class="sub">${p.brand} &middot; <code>${p.id}</code></div>
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label for="price-${p.id}">Price (USD)</label>
+          <input id="price-${p.id}" type="number" step="0.01" min="0"
+                 value="${(p.price / 100).toFixed(2)}" />
+        </div>
+        <div><button class="small" data-price-for="${p.id}">Set</button></div>
+      </div>
+    </div>`).join("");
+
+  el.querySelectorAll("[data-price-for]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.priceFor;
+      const price = Number(document.getElementById(`price-${id}`).value);
+      try {
+        await api("/api/price", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ product_id: id, price }),
+        });
+        toast(`${id} is now ${money(price)}`);
+        await refresh();
+      } catch (e) { toast(e.message, true); }
+    });
+  });
+}
+
+function renderMandates() {
+  const el = $("mandates");
+  $("noMandate").hidden = state.mandates.length > 0;
+  if (!state.mandates.length) { el.innerHTML = ""; return; }
+
+  el.innerHTML = state.mandates.map((m) => {
+    const prev = lastThresholds.get(m.mandate_id);
+    let delta = "";
+    if (prev !== undefined && prev !== m.confidence_threshold) {
+      const up = m.confidence_threshold > prev;
+      delta = `<span class="delta ${up ? "up-arrow" : "down-arrow"}">
+                 ${up ? "▲ tightened" : "▼ loosened"} from ${prev.toFixed(2)}</span>`;
+    }
+    const c = m.constraints ?? {};
+    return `
+      <div class="card">
+        <h3>${m.goal}</h3>
+        <div class="sub"><code>${m.mandate_id}</code> &middot; ${m.status}</div>
+        <div style="margin:10px 0 2px">
+          <div class="threshold">${m.confidence_threshold.toFixed(2)} ${delta}</div>
+          <div class="sub">confidence threshold</div>
+        </div>
+        <div class="sub" style="margin-top:8px">
+          max ${c.max_price !== undefined ? money(c.max_price) : "—"}
+          &middot; prefers ${c.preferred_brand ?? "—"}
+        </div>
+        <div class="sub">
+          ${m.history.undisputed_actions} undisputed &middot; ${m.history.disputed_actions} disputed
+        </div>
+        <div style="margin-top:8px">
+          ${(m.requires_approval_if ?? []).map((r) => `<span class="chip">${r}</span>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
+
+  state.mandates.forEach((m) => lastThresholds.set(m.mandate_id, m.confidence_threshold));
+}
+
+function renderVouches() {
+  const el = $("vouches");
+  if (!state.vouches.length) {
+    el.innerHTML = '<div class="empty">Nothing yet — propose a purchase above.</div>';
+    return;
+  }
+  el.innerHTML = state.vouches.map((v) => {
+    const rules = (v.authority.triggered_rules ?? [])
+      .map((r) => `<span class="chip">${r}</span>`).join("");
+    const order = v.evidence.digital.order_id;
+    return `
+      <div class="vouch" id="vouch-${v.vouch_id}">
+        <div class="vouch-head">
+          ${statusBadge(v.action.status)}
+          <span class="vouch-title">${v.decision.product}</span>
+          <span class="price">${money(v.decision.price)}</span>
+          ${v.dispute ? '<span class="badge bad">Disputed</span>' : ""}
+        </div>
+        <div class="meta">
+          ${new Date(v.created_at).toLocaleString()} &middot;
+          session <code>${(v.action.ucp_session_id ?? "—").slice(0, 8)}</code> &middot;
+          ${order ? `order <code>${order.slice(0, 14)}</code>` : "no order placed"}
+        </div>
+        <div style="margin-top:7px">${correlationBadge(v.evidence.physical.correlation_status)}</div>
+        ${rules ? `<div style="margin-top:7px"><span class="meta">stopped by:</span> ${rules}</div>` : ""}
+        ${v.dispute ? `<div class="meta" style="margin-top:6px">disputed: “${v.dispute.reason ?? "no reason given"}”</div>` : ""}
+        <div class="actions">
+          <button class="small" data-explain="${v.vouch_id}">Why?</button>
+          ${v.action.status === "PendingApproval"
+            ? `<button class="small primary" data-approve="${v.vouch_id}">Approve</button>` : ""}
+          ${v.action.status === "Complete" && !v.dispute
+            ? `<button class="small" data-dispute="${v.vouch_id}">I didn't want that</button>` : ""}
+        </div>
+        <div data-explain-slot="${v.vouch_id}"></div>
+      </div>`;
+  }).join("");
+
+  el.querySelectorAll("[data-explain]").forEach((b) =>
+    b.addEventListener("click", () => explain(b.dataset.explain)));
+  el.querySelectorAll("[data-approve]").forEach((b) =>
+    b.addEventListener("click", () => approve(b.dataset.approve)));
+  el.querySelectorAll("[data-dispute]").forEach((b) =>
+    b.addEventListener("click", () => dispute(b.dataset.dispute)));
+}
+
+function renderSelectors() {
+  const m = $("pMandate");
+  m.innerHTML = state.mandates.map((x) => `<option value="${x.mandate_id}">${x.goal}</option>`).join("");
+  const p = $("pProduct");
+  p.innerHTML = state.catalog
+    .map((x) => `<option value="${x.id}" data-brand="${x.brand}">${x.title} — ${money(x.price / 100)}</option>`)
+    .join("");
+}
+
+/* ---------- actions ---------- */
+
+async function explain(vouchId) {
+  const slot = document.querySelector(`[data-explain-slot="${vouchId}"]`);
+  slot.innerHTML = '<div class="explain">thinking…</div>';
+  try {
+    const { text } = await callTool("explain_vouch", { vouch_id: vouchId });
+    slot.innerHTML = `<div class="explain">${text}</div>`;
+  } catch (e) { slot.innerHTML = `<div class="explain">${e.message}</div>`; }
+}
+
+async function approve(vouchId) {
+  try {
+    await callTool("approve_purchase", { vouch_id: vouchId });
+    toast("Approved — the held session became an order.");
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function dispute(vouchId) {
+  const reason = prompt("What was wrong with it?", "I didn't want that");
+  if (reason === null) return;
+  try {
+    const { text } = await callTool("record_dispute", { vouch_id: vouchId, reason });
+    const r = JSON.parse(text);
+    toast(`Threshold ${r.threshold_before.toFixed(2)} → ${r.threshold_after.toFixed(2)}`);
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+}
+
+$("proposeBtn").addEventListener("click", async () => {
+  const btn = $("proposeBtn");
+  const opt = $("pProduct").selectedOptions[0];
+  if (!opt || !$("pMandate").value) { toast("Need a mandate and a product.", true); return; }
+  btn.disabled = true;
+  try {
+    const { text } = await callTool("propose_purchase", {
+      mandate_id: $("pMandate").value,
+      product_id: opt.value,
+      brand: opt.dataset.brand,
+      quantity: Number($("pQty").value),
+      confidence: Number($("pConf").value),
+      reason: $("pReason").value.split(",").map((s) => s.trim()).filter(Boolean),
+    });
+    const r = JSON.parse(text);
+    $("proposeResult").innerHTML = `<div class="explain">
+      <strong>${r.outcome === "completed" ? "Bought it." : "Held for approval."}</strong>
+      Session ended <code>${r.session_status}</code>. ${r.explanation}</div>`;
+    await refresh();
+  } catch (e) {
+    $("proposeResult").innerHTML = `<div class="explain">${e.message}</div>`;
+  } finally { btn.disabled = false; }
+});
+
+$("seedBtn").addEventListener("click", async () => {
+  try {
+    await callTool("create_mandate", {
+      mandate_id: "m_detergent",
+      goal: "Keep laundry detergent stocked",
+      constraints: { max_price: 15, preferred_brand: "Brand A", fallback_brand: "Brand B" },
+      requires_approval_if: ["price > max_price", "new_brand", "quantity > 2"],
+      authority_type: "explicit",
+      confidence_threshold: 0.85,
+    });
+    toast("Mandate created.");
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+});
+
+/* ---------- loop ---------- */
+
+async function refresh() {
+  try {
+    const data = await api("/api/state");
+    state = { mandates: data.mandates, vouches: data.vouches, catalog: data.catalog };
+    $("dot").className = "dot up";
+    $("statusText").textContent = "connected";
+    renderCatalog(); renderMandates(); renderSelectors(); renderVouches();
+  } catch (e) {
+    $("dot").className = "dot down";
+    $("statusText").textContent = "disconnected";
+    $("vouches").innerHTML = `<div class="empty">${e.message}</div>`;
+  }
+}
+
+refresh();
+</script>
+</body>
+</html>

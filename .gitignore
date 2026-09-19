@@ -9,5 +9,12 @@ build/
 *.db
 *.sqlite
 *.sqlite3
+# SQLite in WAL mode (packages/db sets journal_mode=WAL) writes two sidecar
+# files next to the database. They are runtime state, not source, and appear
+# the moment `npm run dev:mcp-server` is started.
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
 .DS_Store
 coverage/
