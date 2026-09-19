@@ -1,17 +1,22 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-// Cross-package relative imports on purpose: these tests exercise the loop
-// that spans packages/shared (the gate) and packages/reasoning (threshold
-// adjustment), and importing the workspace names would require a build
-// first, since each package's "main" points at dist/. Keeping `npm test`
-// build-free matters more here than import tidiness.
-import { BELOW_CONFIDENCE_THRESHOLD, evaluateProposal } from "../packages/shared/src/gate.ts";
-import { newMandate } from "../packages/shared/src/mandate.ts";
-import type { PurchaseProposal } from "../packages/shared/src/gate.ts";
-import type { Mandate } from "../packages/shared/src/mandate.ts";
-import { RuleBasedReasoningProvider } from "../packages/reasoning/src/ruleBasedProvider.ts";
-import type { ThresholdAdjustment } from "../packages/reasoning/src/types.ts";
+// Workspace names, not relative paths into src/.
+//
+// REVERSED IN WEEK 2, and worth recording why rather than quietly changing:
+// week 1 used relative source imports to keep `npm test` build-free, which
+// worked only because every intra-package import in the files under test
+// happened to be `import type` and was erased before Node saw it. Week 2's
+// packages have real value imports between their own files (store.ts ->
+// schema.js, merchant.ts -> catalog.js), and Node's type stripping does not
+// rewrite a ".js" specifier to a ".ts" file, so loading src/*.ts directly
+// now fails at runtime. Importing the built package is the fix, `npm test`
+// runs `tsc -b` first, and --enable-source-maps keeps failures pointing at
+// TypeScript line numbers.
+import { BELOW_CONFIDENCE_THRESHOLD, evaluateProposal, newMandate } from "@vouch/shared";
+import type { Mandate, PurchaseProposal } from "@vouch/shared";
+import { RuleBasedReasoningProvider } from "@vouch/reasoning";
+import type { ThresholdAdjustment } from "@vouch/reasoning";
 
 /**
  * The adaptive loop is what makes Vouch this idea rather than a generic

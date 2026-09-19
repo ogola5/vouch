@@ -1,4 +1,4 @@
-import type { Mandate } from "./mandate.js";
+import type { Mandate } from "./mandate.ts";
 
 /**
  * The mandate gate: pure, framework-free logic for deciding whether a

@@ -13,7 +13,7 @@
     "dev:mock-merchant": "npm run dev --workspace packages/mock-merchant",
     "dev:web-app": "npm run dev --workspace packages/web-app",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
-    "test": "node --test \"test/**/*.test.ts\" \"packages/*/test/**/*.test.ts\""
+    "test": "tsc -b && node --enable-source-maps --test \"test/**/*.test.ts\" \"packages/*/test/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

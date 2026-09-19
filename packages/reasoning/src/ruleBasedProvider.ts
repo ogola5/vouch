@@ -3,7 +3,7 @@ import type {
   ReasoningProvider,
   ThresholdAdjustment,
   ThresholdAdjustmentInput,
-} from "./types.js";
+} from "./types.ts";
 
 const MIN_THRESHOLD = 0.5;
 const MAX_THRESHOLD = 0.99;
@@ -11,8 +11,21 @@ const DISPUTE_TIGHTEN_STEP = 0.07;
 const STREAK_LOOSEN_STEP = 0.02;
 const STREAK_LOOSEN_EVERY = 3; // widen after every N consecutive undisputed actions
 
+/**
+ * Thresholds are held to 4 decimal places as well as clamped.
+ *
+ * Without the rounding, repeated steps accumulate binary floating-point
+ * error: 0.85 + 0.07 is 0.9199999999999999, and a few more adjustments make
+ * it worse. That is harmless for the gate's comparison but not for
+ * everything downstream — the value is persisted, returned over MCP, and
+ * shown on the household's Fire TV surface as the mandate's before/after
+ * state. "Your threshold is now 0.9199999999999999" undercuts the one screen
+ * the whole demo is built to land. 4 places is far finer than the 0.02
+ * smallest step, so it changes no decision.
+ */
 function clamp(value: number): number {
-  return Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, value));
+  const bounded = Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, value));
+  return Math.round(bounded * 10_000) / 10_000;
 }
 
 /**

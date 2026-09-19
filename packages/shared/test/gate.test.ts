@@ -1,15 +1,13 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-// Tests import source with explicit .ts extensions because Node's native
-// type stripping (Node 24) executes these files directly and does NOT
-// rewrite a ".js" specifier to a ".ts" file the way tsx or ts-node would.
-// tsconfig.test.json sets allowImportingTsExtensions for exactly this; the
-// build tsconfig only includes src/, so nothing ships with a .ts import.
-import { BELOW_CONFIDENCE_THRESHOLD, evaluateProposal } from "../src/gate.ts";
-import { newMandate } from "../src/mandate.ts";
-import type { PurchaseProposal } from "../src/gate.ts";
-import type { Mandate } from "../src/mandate.ts";
+// Tests import the built workspace package, not ../src. Node's type
+// stripping executes .ts directly but does NOT rewrite a ".js" specifier to
+// a ".ts" file, so a source file with real (non-type-only) imports of its
+// siblings cannot be loaded from src/ at all. `npm test` runs `tsc -b`
+// first; see the note in tsconfig.test.json.
+import { BELOW_CONFIDENCE_THRESHOLD, evaluateProposal, newMandate } from "@vouch/shared";
+import type { Mandate, PurchaseProposal } from "@vouch/shared";
 
 /**
  * The gate is the one piece of this system that a judge is invited to

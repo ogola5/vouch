@@ -1,2 +1,2 @@
-export * from "./types.js";
-export * from "./ruleBasedProvider.js";
+export * from "./types.ts";
+export * from "./ruleBasedProvider.ts";

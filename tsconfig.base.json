@@ -11,6 +11,22 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    // Source files import their siblings with a ".ts" extension, and tsc
+    // rewrites those specifiers to ".js" on emit.
+    //
+    // This is what makes `node src/main.ts` work, which the whole Node 24
+    // choice rests on: type stripping runs .ts directly but does NOT map a
+    // ".js" specifier onto a ".ts" file the way ts-node or tsx would, so a
+    // module importing "./catalog.js" from src/ fails at runtime with
+    // ERR_MODULE_NOT_FOUND. Week 1 never hit this only because every
+    // relative import it had was `import type` and erased before Node saw
+    // it; the first real value import between two files in a package broke
+    // `npm run dev:*` outright.
+    //
+    // allowImportingTsExtensions normally requires noEmit; pairing it with
+    // rewriteRelativeImportExtensions is the combination that permits both.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     // Required for TypeScript project references, which is how cross-package
     // imports typecheck here. Each package references the packages it
     // depends on, so `tsc -b` builds them in dependency order and

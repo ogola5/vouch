@@ -1,5 +1,5 @@
 import type { PhysicalEvidence } from "@vouch/shared";
-import type { CorrelationRequest, PhysicalEvidenceProvider } from "./types.js";
+import type { CorrelationRequest, PhysicalEvidenceProvider } from "./types.ts";
 
 /**
  * Deterministic, scriptable stand-in for a real Ring webhook. Deliberately

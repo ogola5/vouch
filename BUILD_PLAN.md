@@ -73,6 +73,42 @@ decisions change rather than letting it drift out of sync with the code.
 - **Alexa+ simulation: text chat, no voice.** A web chat UI stands in for the Alexa+ conversation.
   Lower risk for a recorded demo than wiring the Web Speech API; can be revisited in week 4-5 if
   there's spare time and the core loop is solid.
+- **Persistence: Node 24's built-in `node:sqlite`, not `better-sqlite3` (2026-09-19).** Same
+  reasoning that picked `node --test` over a test framework — the project is already on Node 24
+  for native type stripping, so use what that buys. `better-sqlite3` is a native module needing a
+  compile toolchain at install time, which on a Windows/WSL checkout is a reliable source of
+  "works on my machine". `DatabaseSync` is unflagged on Node 24 and was verified working here
+  before the package was written.
+- **Three constraints that Node 24's type stripping imposes on all source, learned the hard way
+  in week 2 (2026-09-19).** Stripping is *strip-only*: it erases type annotations but does not
+  transform syntax. That has consequences which cost real time to rediscover, so they are
+  recorded here rather than left to be re-hit in week 4:
+  1. **Constructor parameter properties are a runtime `SyntaxError`.** `constructor(private
+     readonly merchant: Merchant) {}` fails with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` in any file
+     Node executes directly — which includes every `npm run dev:*` entry point and every test.
+     Declare the field and assign it in the constructor body instead. The whole project avoids
+     the shorthand.
+  2. **Relative imports are written with a `.ts` extension**, with
+     `rewriteRelativeImportExtensions` in `tsconfig.base.json` turning them into `.js` on emit.
+     Node does not map a `./schema.js` specifier onto `schema.ts` the way ts-node or tsx would,
+     so `node src/main.ts` fails outright the moment a package has a real (non-type-only) import
+     between two of its own files. Week 1 never hit this because every relative import it had was
+     `import type` and was erased before Node saw it; `npm run dev:mock-merchant` and
+     `npm run dev:mcp-server` were both broken the first time they were run.
+  3. **Week 1's "`npm test` needs no build step" is reversed.** Tests now import workspace
+     packages by name (`@vouch/db`) rather than reaching into another package's `src/`, and
+     `npm test` runs `tsc -b` first. Two independent reasons force this: consequence (2) above
+     means a package's source cannot be loaded from `src/` at all once it has internal value
+     imports, and a class with a private field is *nominally* typed — a `VouchStore` built from
+     `../../db/src` is not assignable to the `@vouch/db` `VouchStore` in `VouchService`'s
+     signature. Testing what actually ships is the better default anyway;
+     `--enable-source-maps` keeps failures pointing at TypeScript line numbers.
+- **Confidence thresholds are rounded to 4 decimal places, not just clamped (2026-09-19).**
+  `0.85 + 0.07` is `0.9199999999999999` in binary floating point, and repeated adjustments
+  compound it. Harmless for the gate's comparison, but the value is persisted, returned over MCP
+  and shown on the Fire TV surface as the mandate's before/after state — "your threshold is now
+  0.9199999999999999" undercuts the one screen the demo is built to land. 4 places is far finer
+  than the smallest 0.02 step, so no decision changes.
 
 ## 2. Architecture
 
@@ -175,12 +211,37 @@ $27.80," which the orchestrator picks up and runs through the real gate. This is
      a caller that had to consult two gates could consult only one. Revisit if a third concern
      wants in; at that point it becomes a pipeline of checks rather than one function, and the
      `triggeredRules` array is already the right shape to carry that.
-2. **Week 2 — MCP server + mock UCP merchant + db + orchestrator on Strands.** Build
-   `packages/db` (SQLite, mandates/vouches/disputes tables), `packages/mock-merchant` (real UCP
-   session lifecycle, now checkable against `packages/shared/src/ucp.ts` rather than a guess),
-   and `packages/mcp-server` (tools listed in the architecture diagram). The gate must run inside
-   `propose_purchase`, before the call to the merchant's Complete endpoint — build a test that
-   asserts an out-of-bounds proposal never reaches Complete.
+2. **Week 2 — MCP server + mock UCP merchant + db + orchestrator on Strands.** ✅ **Three of the
+   four done this session; the Strands orchestrator is the one piece outstanding.** Built:
+   `packages/db` (SQLite via Node 24's built-in `node:sqlite`), `packages/mock-merchant` (UCP
+   session lifecycle, `/.well-known/ucp`, demo price control) and `packages/mcp-server` (nine
+   tools, Streamable HTTP). 61 tests pass, typecheck clean, both services boot and talk to each
+   other over HTTP.
+   - **The gate's position in the lifecycle, decided and worth defending in a walkthrough.** The
+     session is created and driven to `ready_for_complete` FIRST, and the gate runs on the
+     `ready_for_complete -> completed` transition. Refusing earlier would be easier and much
+     weaker evidence: "we never asked" proves nothing about whether the check works. Because the
+     gate runs last, a held purchase leaves a genuine UCP session parked at the spec state
+     meaning *every requirement satisfied, order not placed*, with its id on the Vouch — so the
+     demo can show the session sitting one call short of an order. `packages/mcp-server/test/
+     gate-before-complete.test.ts` asserts `completeSession` is never dialled, which is the claim;
+     asserting the result said "held" would have passed even if the order had been placed.
+   - **The price the gate compares is read off the merchant's session, never taken from the
+     caller.** An agent that could name its own price for the bounds check could authorise
+     anything. Brand is still caller-asserted, because UCP's item shape carries id/title/price and
+     no brand attribute — noted in `service.ts`, and it only feeds the softer `new_brand` rule.
+   - **`max_price` means UNIT price, not order total.** The brief's own demo buys 2 units at
+     $12.49 against a $15 mandate, so unit price is what the mandate language means there;
+     `quantity > N` is what bounds total exposure. Genuine ambiguity, resolved in one place.
+   - **New tool not in the original list: `approve_purchase`.** A held Vouch needed a way to
+     become an order once the household says yes, otherwise `ready_for_complete` is a dead end.
+     It deliberately does not re-run the gate — `requires_approval_if` means the purchase needs a
+     human, and this is that human — but it only works from `PendingApproval`, so it cannot be
+     used to skip the gate on a fresh proposal. There is still no tool that completes a checkout
+     directly, and a test asserts that stays true.
+   - **Undisputed streaks are counted at completion, with no dispute window.** A real deployment
+     would want a settling period before an action counts as trusted. Named here rather than
+     glossed; it is a one-line caveat in the writeup, not a hidden shortcut.
    - **Decision (2026-09-17, moved forward from week 4): build the orchestrator on the Strands
      Agents TypeScript SDK from the start, not on a hand-rolled MCP client loop.** Strands
      TypeScript hit 1.0 with native MCP client support, so it replaces the loop rather than
@@ -270,3 +331,44 @@ next actions below.
   swap — and Fire TV is explicitly the secondary surface here, so it should not drive the stack.
 - **Bee (Wearable AI) track exists but is out of scope for Vouch** — noted for completeness, not
   a fit for a household-purchase-trust product.
+
+## 6. Noticed, not scoped
+
+Real improvements spotted while working, deliberately not built. Per `CLAUDE.md` §1, anything
+noticed mid-task that isn't a blocker for the current week-by-week item lands here as one line
+rather than getting implemented "while you're in the file". Revisit only when a week's plan
+actually calls for it, or after the core loop is solid end to end.
+
+- The mock merchant's `DEMO_TAX_RATE` is a flat 8.75% with no per-destination logic. Fine for the
+  demo; wrong for anything real.
+- `VouchService` hardcodes `DEMO_HOUSEHOLD` (email + shipping destination). A real system looks
+  this up per account, which is also where the cut household multi-user story (§2) would start.
+- `MockRingProvider.scriptOutcome` keys on `order_id`, which doesn't exist until the order does,
+  so scripting a corroborated outcome in advance needs an interception rather than a
+  pre-registration. Workable, slightly awkward — see `end-to-end.test.ts`.
+- `UcpTotal.type` is a loose `string` rather than a closed enum, pending a read of the UCP
+  OpenAPI schema. Deliberate: guessing a closed set here would reintroduce the exact failure the
+  ucp.ts rewrite fixed.
+- Declaration files emit `.ts` relative specifiers under `rewriteRelativeImportExtensions` while
+  the JavaScript correctly emits `.js`. TypeScript resolves this fine and typecheck passes, so it
+  costs nothing today; it would matter only if a non-TypeScript consumer ever read `dist/`.
+
+## 7. Open questions — flagged for a second opinion, not silently decided
+
+Per `CLAUDE.md` §8: requirements that are genuinely unclear and whose resolution would touch a
+meaningful amount of code. Raise these rather than picking an interpretation and building on it.
+
+- **What actually produces the `confidence` value on a `PurchaseProposal`? (opened 2026-09-19)**
+  `evaluateProposal` compares it against the mandate's `confidence_threshold`, and the adaptive
+  loop exists to move that threshold — so this number is the single most load-bearing input in
+  the system. Today the orchestrator asserts it and nothing validates it, which means the agent
+  effectively grades its own homework on the one value its authority depends on. Options, none
+  chosen: derive it from observable signals (price delta vs. history, brand match, recency of a
+  prior purchase) rather than letting the model state it; have the `ReasoningProvider` produce it
+  so the Bedrock swap covers it; or keep it caller-asserted and say so plainly in the writeup as
+  a known limitation. Blast radius is several files, so it wants a decision before week 4's query
+  layer leans on it.
+- **Is `brand` on a proposal trustworthy? (opened 2026-09-19)** Same shape of problem, smaller
+  stakes. UCP's item schema carries `id`, `title` and `price` but no brand attribute, so the
+  `new_brand` rule is evaluated against a caller-supplied string. Price is already read off the
+  merchant's session precisely so the agent cannot name its own; brand is the remaining gap.

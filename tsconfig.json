@@ -5,6 +5,9 @@
   "references": [
     { "path": "./packages/shared" },
     { "path": "./packages/reasoning" },
-    { "path": "./packages/ring-integration" }
+    { "path": "./packages/ring-integration" },
+    { "path": "./packages/db" },
+    { "path": "./packages/mock-merchant" },
+    { "path": "./packages/mcp-server" }
   ]
 }

@@ -1,2 +1,2 @@
-export * from "./types.js";
-export * from "./mockProvider.js";
+export * from "./types.ts";
+export * from "./mockProvider.ts";

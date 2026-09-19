@@ -6,11 +6,23 @@
   // them, so without this config a test could reference a field that no
   // longer exists and still "pass". This config is the checking half.
   //
-  // It is separate from each package's build tsconfig because tests import
-  // source with explicit .ts extensions (Node does not rewrite ".js"
-  // specifiers to ".ts"), and allowImportingTsExtensions is only legal
-  // alongside noEmit. The build configs still include src/ only, so nothing
-  // with a .ts import is ever emitted.
+  // ONE IMPORT RULE, everywhere: a test imports workspace packages by name
+  // ("@vouch/db"), never by a relative path into any package's src/.
+  //
+  // Week 1 did the opposite, to keep `npm test` build-free. That only worked
+  // by accident: every intra-package import in the files under test was
+  // `import type` and was erased before Node saw it. Week 2's packages have
+  // real value imports between their own files (store.ts -> schema.js), and
+  // Node's type stripping does NOT rewrite a ".js" specifier to a ".ts"
+  // file, so those modules cannot be loaded from src/ at all.
+  //
+  // Importing the built package also fixes a second problem it would have
+  // been easy to paper over: a class with a private field is nominally
+  // typed, so a VouchStore constructed from ../../db/src is not assignable
+  // to the "@vouch/db" VouchStore in VouchService's signature.
+  //
+  // Consequences: `npm test` runs `tsc -b` first, and passes
+  // --enable-source-maps so failures still report TypeScript line numbers.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
