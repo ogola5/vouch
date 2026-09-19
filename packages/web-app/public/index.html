@@ -157,9 +157,55 @@
       The confidence threshold is the number the adaptive loop moves. Watch it after a dispute.
     </p>
     <div class="grid" id="mandates"><div class="empty">loading…</div></div>
-    <div class="note" id="noMandate" hidden>
-      No mandate yet. <button class="small primary" id="seedBtn">Create the detergent mandate</button>
-      &mdash; goal “Keep laundry detergent stocked”, max $15, Brand A preferred, threshold 0.85.
+
+    <div class="note">
+      <button class="small" id="toggleForm">New mandate</button>
+      <button class="small" id="seedBtn">Use the demo defaults</button>
+      <span class="meta" id="editingLabel"></span>
+    </div>
+
+    <div id="mandateForm" hidden style="margin-top:12px">
+      <div class="row">
+        <div style="grid-column:1/-1">
+          <label for="fGoal">Goal — what you're asking for, in your words</label>
+          <input id="fGoal" placeholder="Keep laundry detergent stocked" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label for="fMax">Max price ($)</label><input id="fMax" type="number" step="0.01" min="0" placeholder="15" /></div>
+        <div><label for="fQty">Max quantity</label><input id="fQty" type="number" min="1" placeholder="2" /></div>
+        <div><label for="fPref">Preferred brand</label><input id="fPref" placeholder="Brand A" /></div>
+        <div><label for="fFall">Fallback brand</label><input id="fFall" placeholder="Brand B" /></div>
+        <div>
+          <label for="fThr">Confidence threshold</label>
+          <input id="fThr" type="number" min="0" max="1" step="0.01" placeholder="0.85" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div style="grid-column:1/-1">
+          <label>Hold for approval when…</label>
+          <div>
+            <label class="meta" style="display:inline-block;margin-right:14px">
+              <input type="checkbox" id="rPrice" checked style="width:auto"> over the max price
+            </label>
+            <label class="meta" style="display:inline-block;margin-right:14px">
+              <input type="checkbox" id="rBrand" checked style="width:auto"> an unfamiliar brand
+            </label>
+            <label class="meta" style="display:inline-block">
+              <input type="checkbox" id="rQty" checked style="width:auto"> over the max quantity
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button class="primary" id="saveMandate">Save</button>
+        <button id="cancelMandate">Cancel</button>
+      </div>
+      <div class="note" id="formHint">
+        Editing a mandate is the household's power, not the agent's — it goes through
+        <code>/api/household</code>, which is a different surface from the tools the agent can call.
+        An agent able to raise its own spending limit would make the gate decorative.
+      </div>
     </div>
   </section>
 
@@ -280,8 +326,10 @@ function renderCatalog() {
 
 function renderMandates() {
   const el = $("mandates");
-  $("noMandate").hidden = state.mandates.length > 0;
-  if (!state.mandates.length) { el.innerHTML = ""; return; }
+  if (!state.mandates.length) {
+    el.innerHTML = '<div class="empty">No mandate yet — the agent has no authority at all until there is one.</div>';
+    return;
+  }
 
   el.innerHTML = state.mandates.map((m) => {
     const prev = lastThresholds.get(m.mandate_id);
@@ -310,8 +358,32 @@ function renderMandates() {
         <div style="margin-top:8px">
           ${(m.requires_approval_if ?? []).map((r) => `<span class="chip">${r}</span>`).join("")}
         </div>
+        <div class="actions">
+          <button class="small" data-edit="${m.mandate_id}">Edit</button>
+          <button class="small" data-pause="${m.mandate_id}" data-paused="${m.status === "paused"}">
+            ${m.status === "paused" ? "Resume" : "Pause"}
+          </button>
+        </div>
       </div>`;
   }).join("");
+
+  el.querySelectorAll("[data-edit]").forEach((b) =>
+    b.addEventListener("click", () =>
+      openForm(state.mandates.find((m) => m.mandate_id === b.dataset.edit))));
+
+  el.querySelectorAll("[data-pause]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      try {
+        // pause_mandate stays an agent tool: pausing only ever REMOVES the
+        // agent's authority, and resuming restores what the household already
+        // granted rather than widening it.
+        await callTool("pause_mandate", {
+          mandate_id: b.dataset.pause,
+          paused: b.dataset.paused !== "true",
+        });
+        await refresh();
+      } catch (e) { toast(e.message, true); }
+    }));
 
   state.mandates.forEach((m) => lastThresholds.set(m.mandate_id, m.confidence_threshold));
 }
@@ -347,8 +419,9 @@ function renderVouches() {
           ${v.action.status === "PendingApproval"
             ? `<button class="small primary" data-approve="${v.vouch_id}">Approve</button>` : ""}
           ${v.action.status === "Complete" && !v.dispute
-            ? `<button class="small" data-dispute="${v.vouch_id}">I didn't want that</button>` : ""}
+            ? `<button class="small" data-dispute-open="${v.vouch_id}">I didn't want that</button>` : ""}
         </div>
+        <div data-dispute-slot="${v.vouch_id}"></div>
         <div data-explain-slot="${v.vouch_id}"></div>
       </div>`;
   }).join("");
@@ -357,8 +430,41 @@ function renderVouches() {
     b.addEventListener("click", () => explain(b.dataset.explain)));
   el.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => approve(b.dataset.approve)));
-  el.querySelectorAll("[data-dispute]").forEach((b) =>
-    b.addEventListener("click", () => dispute(b.dataset.dispute)));
+  el.querySelectorAll("[data-dispute-open]").forEach((b) =>
+    b.addEventListener("click", () => openDispute(b.dataset.disputeOpen)));
+}
+
+/*
+ * An inline form, NOT window.prompt().
+ *
+ * prompt() is blocked outright in VS Code's Simple Browser and in sandboxed
+ * iframes, where it returns null — so the handler took the "user cancelled"
+ * path and did nothing at all, silently. That is how this button came to
+ * "not work": the backend was correct the whole time and the browser never
+ * let the question be asked. A demo surface should not depend on a dialog
+ * the host may refuse to show.
+ */
+function openDispute(vouchId) {
+  const slot = document.querySelector(`[data-dispute-slot="${vouchId}"]`);
+  if (!slot || slot.dataset.open === "1") return;
+  slot.dataset.open = "1";
+  slot.innerHTML = `
+    <div class="explain">
+      <label for="dr-${vouchId}">What was wrong with it?</label>
+      <input id="dr-${vouchId}" value="I didn't want that" />
+      <div class="actions">
+        <button class="small primary" data-dispute-confirm="${vouchId}">Dispute it</button>
+        <button class="small" data-dispute-cancel="${vouchId}">Cancel</button>
+      </div>
+    </div>`;
+
+  slot.querySelector("[data-dispute-confirm]").addEventListener("click", () =>
+    dispute(vouchId, document.getElementById(`dr-${vouchId}`).value));
+  slot.querySelector("[data-dispute-cancel]").addEventListener("click", () => {
+    slot.dataset.open = "0";
+    slot.innerHTML = "";
+  });
+  document.getElementById(`dr-${vouchId}`).focus();
 }
 
 function renderSelectors() {
@@ -381,24 +487,114 @@ async function explain(vouchId) {
   } catch (e) { slot.innerHTML = `<div class="explain">${e.message}</div>`; }
 }
 
+// Approve and dispute go through /api/household, not through the MCP tool
+// proxy. Approving a held purchase is a power the agent does not have — the
+// tool was removed from its surface entirely, because a prompt asking it not
+// to approve its own purchases is a request, while a missing tool is a
+// guarantee.
+const household = (path, options) =>
+  api(`/api/household/${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+
 async function approve(vouchId) {
   try {
-    await callTool("approve_purchase", { vouch_id: vouchId });
+    await household(`vouches/${encodeURIComponent(vouchId)}/approve`, { method: "POST", body: "{}" });
     toast("Approved — the held session became an order.");
     await refresh();
   } catch (e) { toast(e.message, true); }
 }
 
-async function dispute(vouchId) {
-  const reason = prompt("What was wrong with it?", "I didn't want that");
-  if (reason === null) return;
+async function dispute(vouchId, reason) {
   try {
-    const { text } = await callTool("record_dispute", { vouch_id: vouchId, reason });
-    const r = JSON.parse(text);
+    const r = await household(`vouches/${encodeURIComponent(vouchId)}/dispute`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
     toast(`Threshold ${r.threshold_before.toFixed(2)} → ${r.threshold_after.toFixed(2)}`);
     await refresh();
   } catch (e) { toast(e.message, true); }
 }
+
+/* ---------- mandate form ---------- */
+
+let editingId = null;
+
+function openForm(mandate) {
+  editingId = mandate?.mandate_id ?? null;
+  const c = mandate?.constraints ?? {};
+  $("fGoal").value = mandate?.goal ?? "";
+  $("fMax").value = c.max_price ?? "";
+  $("fQty").value = c.quantity ?? "";
+  $("fPref").value = c.preferred_brand ?? "";
+  $("fFall").value = c.fallback_brand ?? "";
+  $("fThr").value = mandate?.confidence_threshold ?? 0.85;
+
+  const rules = mandate?.requires_approval_if ?? ["price > max_price", "new_brand"];
+  $("rPrice").checked = rules.includes("price > max_price");
+  $("rBrand").checked = rules.includes("new_brand");
+  $("rQty").checked = rules.some((r) => r.startsWith("quantity >"));
+
+  $("editingLabel").textContent = mandate ? `editing ${mandate.mandate_id}` : "";
+  $("mandateForm").hidden = false;
+  $("fGoal").focus();
+}
+
+function closeForm() {
+  editingId = null;
+  $("mandateForm").hidden = true;
+  $("editingLabel").textContent = "";
+}
+
+function readForm() {
+  const constraints = {};
+  const max = parseFloat($("fMax").value);
+  const qty = parseInt($("fQty").value, 10);
+  if (Number.isFinite(max)) constraints.max_price = max;
+  if (Number.isFinite(qty)) constraints.quantity = qty;
+  if ($("fPref").value.trim()) constraints.preferred_brand = $("fPref").value.trim();
+  if ($("fFall").value.trim()) constraints.fallback_brand = $("fFall").value.trim();
+
+  const rules = [];
+  if ($("rPrice").checked) rules.push("price > max_price");
+  if ($("rBrand").checked) rules.push("new_brand");
+  // The quantity rule carries its own number, so it can only be offered when
+  // a max quantity was actually given.
+  if ($("rQty").checked && Number.isFinite(qty)) rules.push(`quantity > ${qty}`);
+
+  const thr = parseFloat($("fThr").value);
+  return {
+    goal: $("fGoal").value.trim(),
+    constraints,
+    requires_approval_if: rules,
+    confidence_threshold: Number.isFinite(thr) ? thr : 0.85,
+  };
+}
+
+$("toggleForm").addEventListener("click", () => {
+  if ($("mandateForm").hidden) openForm(null); else closeForm();
+});
+$("cancelMandate").addEventListener("click", closeForm);
+
+$("saveMandate").addEventListener("click", async () => {
+  const body = readForm();
+  if (!body.goal) { toast("Give it a goal — that's what the agent is acting on.", true); return; }
+  try {
+    if (editingId) {
+      await household(`mandates/${encodeURIComponent(editingId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      toast("Mandate updated.");
+    } else {
+      await callTool("create_mandate", { ...body, authority_type: "explicit" });
+      toast("Mandate created.");
+    }
+    closeForm();
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+});
 
 $("proposeBtn").addEventListener("click", async () => {
   const btn = $("proposeBtn");

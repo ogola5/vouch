@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerVouchTools } from "./tools.ts";
+import { handleHouseholdRequest } from "./household.ts";
 import type { VouchService } from "./service.ts";
 
 /**
@@ -74,6 +75,13 @@ export function createVouchHttpServer(options: McpServerOptions): Server {
     if (url.pathname === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
+      return;
+    }
+
+    // The household's surface, which holds the powers the agent must not
+    // have (approve a held purchase, edit a mandate's limits). See
+    // household.ts for why it is a separate surface rather than a flag.
+    if (await handleHouseholdRequest(req, res, options.service, url.pathname)) {
       return;
     }
 

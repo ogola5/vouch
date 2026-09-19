@@ -187,23 +187,22 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     }
   );
 
-  server.registerTool(
-    "approve_purchase",
-    {
-      title: "Approve a held purchase",
-      description:
-        "Complete a purchase the gate held, after the household has said yes. Only works on a " +
-        "Vouch in PendingApproval — it cannot be used to skip the gate on a new proposal.",
-      inputSchema: { vouch_id: z.string() },
-    },
-    async ({ vouch_id }) => {
-      try {
-        return json(await service.approvePurchase(vouch_id));
-      } catch (error) {
-        return failure(error);
-      }
-    }
-  );
+  /*
+   * NO approve_purchase TOOL — REMOVED DELIBERATELY, do not add it back.
+   *
+   * It was here, and a live run showed why it should not be: an agent whose
+   * purchase is held can simply approve it, and the resulting Vouch records
+   * `approved_by_household` — a statement that would then be false. The
+   * household's record would show consent that was never given, which is the
+   * one lie this whole project exists to make impossible.
+   *
+   * Approval now lives on the household surface only (household.ts,
+   * POST /household/vouches/:id/approve). The rule: the agent may do anything
+   * that cannot increase its own authority. Approving a refusal increases it.
+   *
+   * The system prompt used to tell the model not to do this. A prompt is a
+   * request; an absent tool is a guarantee.
+   */
 
   /* ---------------------------------------------------------------------
    * The adaptive loop

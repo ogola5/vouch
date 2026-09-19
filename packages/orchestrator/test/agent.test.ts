@@ -151,6 +151,10 @@ describe("the agent, live against Gemini", () => {
       1,
       `it must not re-propose after being held; made ${proposals.length} proposals`
     );
+    // Now structurally impossible rather than merely discouraged: the tool was
+    // removed from the agent's surface. Kept as a regression guard — if
+    // approve_purchase is ever put back on the toolset, this starts failing
+    // for the right reason.
     assert.equal(
       approvals.length,
       0,

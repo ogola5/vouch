@@ -93,7 +93,6 @@ describe("the tool surface an orchestrator actually sees", () => {
     const names = tools.map((t) => t.name).sort();
 
     assert.deepEqual(names, [
-      "approve_purchase",
       "create_mandate",
       "explain_vouch",
       "get_mandate",
@@ -104,6 +103,20 @@ describe("the tool surface an orchestrator actually sees", () => {
       "record_dispute",
       "search_catalog",
     ]);
+  });
+
+  it("offers the agent no way to widen its own authority", async () => {
+    const { tools } = await rig.client.listTools();
+    const names = tools.map((t) => t.name);
+
+    // The rule this surface is built on: the agent may do anything that
+    // cannot increase its own authority. Approving a held purchase turns a
+    // refusal into an order; editing a mandate raises the ceiling the gate
+    // checks against. Both are household-only, and their absence here is the
+    // guarantee — a system prompt asking the model not to would only be a
+    // request.
+    assert.ok(!names.includes("approve_purchase"), "approval is the household's, not the agent's");
+    assert.ok(!names.includes("update_mandate"), "an agent must not edit its own limits");
   });
 
   it("offers no tool that completes a checkout directly", async () => {

@@ -99,6 +99,24 @@ export function createWebApp(options: WebAppOptions): { server: Server; bridge: 
       return;
     }
 
+    /*
+     * The household surface, proxied straight through to mcp-server's
+     * /household routes. These are the powers the AGENT does not have —
+     * approving a held purchase, editing a mandate's limits — so they
+     * deliberately do NOT go through the MCP tool proxy above. If they did,
+     * they would be tools, and a tool is something a model can call.
+     */
+    if (path.startsWith("/api/household/")) {
+      const target = `${options.mcpUrl.replace(/\/mcp$/, "")}/household/${path.slice("/api/household/".length)}`;
+      const response = await fetch(target, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: method === "GET" ? undefined : JSON.stringify(await readJsonBody(req)),
+      });
+      sendJson(res, response.status, await response.json());
+      return;
+    }
+
     if (method === "POST" && path === "/api/price") {
       const body = await readJsonBody(req);
       const productId = body.product_id;

@@ -157,6 +157,63 @@ export class VouchService {
     return this.store.setMandateStatus(mandateId, "active");
   }
 
+  /**
+   * Changes a mandate's limits. HOUSEHOLD-ONLY — deliberately not an MCP tool.
+   *
+   * The dividing line this whole layer is built on: **the agent may do
+   * anything that cannot increase its own authority.** Disputing lowers it,
+   * so the agent may relay a dispute. Raising max_price, or lowering the
+   * confidence threshold, or un-pausing a paused mandate all widen what the
+   * agent is permitted to do next — so an agent holding that power could
+   * simply grant itself whatever the gate refused, and every guarantee in
+   * this project would be theatre.
+   *
+   * Reachable only over the household HTTP surface in household.ts, which
+   * the console and later the Fire TV app speak. A model never sees it.
+   */
+  updateMandate(
+    mandateId: string,
+    changes: {
+      goal?: string;
+      constraints?: Record<string, string | number | boolean>;
+      requires_approval_if?: string[];
+      confidence_threshold?: number;
+      status?: Mandate["status"];
+    }
+  ): Mandate {
+    const mandate = this.store.getMandate(mandateId);
+    if (!mandate) {
+      throw new Error(`No mandate with id "${mandateId}"`);
+    }
+
+    if (changes.confidence_threshold !== undefined) {
+      const t = changes.confidence_threshold;
+      if (!Number.isFinite(t) || t < 0 || t > 1) {
+        throw new Error(`confidence_threshold must be between 0 and 1, got ${t}`);
+      }
+    }
+
+    return this.store.saveMandate({
+      ...mandate,
+      goal: changes.goal ?? mandate.goal,
+      // Constraints are REPLACED, not merged. Merging would make removing a
+      // limit impossible from a form that only ever sends what it has, and a
+      // limit you cannot remove is a worse failure than one you must retype.
+      constraints: changes.constraints ?? mandate.constraints,
+      requires_approval_if: changes.requires_approval_if ?? mandate.requires_approval_if,
+      confidence_threshold: changes.confidence_threshold ?? mandate.confidence_threshold,
+      status: changes.status ?? mandate.status,
+      history: {
+        ...mandate.history,
+        // An edit is an authority change, so it is stamped like one. Without
+        // this, a mandate edited by hand and one moved by the adaptive loop
+        // would be indistinguishable in the record.
+        last_adjusted: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    });
+  }
+
   /* ---------------------------------------------------------------------
    * Discovery
    * ------------------------------------------------------------------ */

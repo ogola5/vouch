@@ -25,7 +25,9 @@ import { McpClient } from "@strands-agents/sdk";
 
 /** The tools packages/mcp-server advertises. Pinned so a silent rename is caught. */
 export const EXPECTED_VOUCH_TOOLS = [
-  "approve_purchase",
+  // No approve_purchase, and no update_mandate. Both would let the agent
+  // widen its own authority, so they live on the household surface instead.
+  // See packages/mcp-server/src/household.ts.
   "create_mandate",
   "explain_vouch",
   "get_mandate",
