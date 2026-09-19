@@ -30,12 +30,14 @@ is the clearest statement of what this project actually is.
 |---|---|
 | Mandate model + gate logic (`packages/shared`) | Real, with tests covering fail-closed behaviour and the dispute → threshold → changed-outcome loop |
 | MCP server (mandate gate as an actual request-path check) | Real, over Streamable HTTP. The gate runs on the `ready_for_complete → completed` transition; a held purchase leaves a genuine UCP session parked one call short of an order |
+| Separation of agent authority from household authority | Real and structural. The agent's MCP tools contain nothing that can widen its own authority — no `approve_purchase`, no mandate editing, no direct checkout. Those live on a separate `/household` surface a model never sees. Not authenticated yet: it binds to localhost |
+| Orchestrator ("the Alexa+ agent"), model-side | Real Strands agent on Gemini, driving the real tools. Verified reaching the gate; its behaviour under refusal is still being measured |
 | Persistence (`packages/db`) | Real SQLite via Node 24's built-in `node:sqlite` — mandates, vouches and disputes; a tightened threshold survives a restart |
 | Mock UCP merchant (`/checkout-sessions` lifecycle, `.well-known/ucp`) | Real spec-conformant shape — derived status, `Idempotency-Key`, `UCP-Agent` enforcement — with simulated checkout/payment. No payment is processed and no goods exist; completing a session mints an order id |
 | Ring webhook correlation | Simulated for now (`MockRingProvider`) — real integration pending Ring developer portal access |
 | Explanation + confidence-threshold adjustment | Simulated for now (`RuleBasedReasoningProvider`) — real integration pending AWS Bedrock access |
 | Alexa+ | Simulated via a web chat app (per track guidance — no real Alexa+ production access needed) |
-| Orchestrator ("the Alexa+ agent") | **Not built yet.** Planned as a real agent loop on the Strands Agents TypeScript SDK with a real MCP client; model provider is Bedrock once AWS credits land, another provider until then |
+| Alexa+ as a *real add-on* (MCP Toolkit) | **Blocked, not skipped.** The Alexa AI CLI sits behind a private AWS CodeArtifact registry gated on Solutions Architect onboarding, and Alexa+ has no African marketplace. Attempted and recorded in `BUILD_PLAN.md` §7; the track explicitly permits simulating via a web app |
 | Fire TV dashboard | Real React Native app hitting the same API as the web app |
 
 ## Repo layout

@@ -168,6 +168,33 @@
     is intentionally thin — it is not where the mandate gate lives; the gate lives in the MCP server
     so that no other future client (Fire TV, a future real Alexa+ integration) could route around it.
 
+    **Two surfaces over one service, and the rule that decides which (2026-09-19).** The MCP tool
+    list is what the AGENT may do. A separate HTTP surface, `/household/*` in
+    `packages/mcp-server/src/household.ts`, is what the HOUSEHOLD may do. The console speaks both;
+    a model only ever sees the first. The dividing rule, which is worth stating in exactly these
+    words in a walkthrough:
+
+    > **The agent may do anything that cannot increase its own authority.**
+
+    So `record_dispute` is on both surfaces — a dispute only ever tightens a mandate, so an agent
+    able to forge one could only harm itself, and relaying "I didn't want that" out of a
+    conversation is a legitimate thing for an agent to do. `pause_mandate` likewise only ever
+    removes authority. Whereas `approve_purchase` and mandate editing are household-only: approval
+    turns a refusal into an order, and raising `max_price` lifts the ceiling the gate checks
+    against. An agent holding either could grant itself whatever the gate had just denied.
+
+    **This reverses an earlier decision and the reason matters.** `approve_purchase` *was* an MCP
+    tool, and the system prompt told the model not to approve its own held purchases. A live run
+    showed why that is not enough: the resulting Vouch records `approved_by_household`, so an
+    agent doing it would write a statement into the household's record that is **false** — the one
+    lie this whole project exists to make impossible. A prompt is a request; a missing tool is a
+    guarantee. The same reasoning already kept `complete_checkout` off the toolset; this just
+    applies it consistently.
+
+    **Risk accepted:** the household surface has no authentication. It binds to 127.0.0.1 and is
+    trusted because it is local. A real deployment needs an identity model — which is exactly
+    where the scope cut below would begin.
+
     **Known scope cut: household multi-user visibility.** A Vouch today is scoped to the account
     that holds the mandate. The stronger version of this product is one where any household member
     can see and question an agent's purchase, not just the account holder — a Receipt only one person
@@ -381,6 +408,12 @@
     - Declaration files emit `.ts` relative specifiers under `rewriteRelativeImportExtensions` while
       the JavaScript correctly emits `.js`. TypeScript resolves this fine and typecheck passes, so it
       costs nothing today; it would matter only if a non-TypeScript consumer ever read `dist/`.
+    - **An approved purchase and a purchase allowed by a raised limit look identical in the
+      console (noticed 2026-09-19).** Both show `Complete` with the original triggered rule still
+      attached. The Vouch *data* distinguishes them — `approved_by_household` is in
+      `decision.reason` — but the UI does not surface it. Worth closing, because "the record is
+      unambiguous" is the product's central claim and this is the one place it currently is not.
+      Small: a badge on the vouch card.
     - **`react-native-multi-tv-app-sample` is a third Fire TV starter, distinct from the
       `react-native-multi-tv-helloworld` that §5 rejected (noted 2026-09-19).** The Devpost resources
       page calls it "the most complete starter" and lists **Android TV** among its targets, not Vega
