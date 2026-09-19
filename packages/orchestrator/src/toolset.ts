@@ -23,7 +23,7 @@ import { McpClient } from "@strands-agents/sdk";
  * orchestrator gets there through `auth` rather than a rewrite.
  */
 
-/** The nine tools packages/mcp-server advertises. Pinned so a silent rename is caught. */
+/** The tools packages/mcp-server advertises. Pinned so a silent rename is caught. */
 export const EXPECTED_VOUCH_TOOLS = [
   "approve_purchase",
   "create_mandate",
@@ -34,6 +34,7 @@ export const EXPECTED_VOUCH_TOOLS = [
   "pause_mandate",
   "propose_purchase",
   "record_dispute",
+  "search_catalog",
 ] as const;
 
 export interface VouchToolsetOptions {

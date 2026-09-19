@@ -102,6 +102,7 @@ describe("the tool surface an orchestrator actually sees", () => {
       "pause_mandate",
       "propose_purchase",
       "record_dispute",
+      "search_catalog",
     ]);
   });
 
@@ -119,6 +120,65 @@ describe("the tool surface an orchestrator actually sees", () => {
         `${tool.name} would let an agent reach an order without passing the mandate gate`
       );
     }
+  });
+});
+
+describe("search_catalog — the tool the first live agent run proved was missing", () => {
+  it("returns real, usable product ids", async () => {
+    const products = await call<{ product_id: string; brand: string; price: number }[]>(
+      rig.client,
+      "search_catalog",
+      {}
+    );
+
+    assert.equal(products.length, 3);
+    // The exact id the model could not guess. It invented "brand-a-detergent";
+    // nothing about the product's name suggests this ordering, which is the
+    // point — ids are not derivable and must be looked up.
+    assert.ok(products.some((p) => p.product_id === "detergent-brand-a"));
+  });
+
+  it("reports prices in dollars, so they compare directly against a mandate", async () => {
+    const products = await call<{ product_id: string; price: number; currency: string }[]>(
+      rig.client,
+      "search_catalog",
+      { query: "brand-c" }
+    );
+
+    assert.equal(products.length, 1);
+    // 27.80, not 2780. A model shown minor units beside a mandate saying
+    // max_price 15 would conclude every item is wildly over budget.
+    assert.equal(products[0]?.price, 27.8);
+    assert.equal(products[0]?.currency, "USD");
+  });
+
+  it("filters on id, title and brand", async () => {
+    const byBrand = await call<unknown[]>(rig.client, "search_catalog", { query: "Brand A" });
+    assert.equal(byBrand.length, 1);
+
+    const byNothing = await call<unknown[]>(rig.client, "search_catalog", { query: "zzz" });
+    assert.equal(byNothing.length, 0, "an empty result is better than a guess");
+  });
+
+  it("is read-only — listing cannot move a price or place an order", async () => {
+    const before = await call<{ product_id: string; price: number }[]>(
+      rig.client,
+      "search_catalog",
+      {}
+    );
+    const vouchesBefore = await call<unknown[]>(rig.client, "list_vouches", {});
+
+    await call<unknown[]>(rig.client, "search_catalog", { query: "detergent" });
+
+    const after = await call<{ product_id: string; price: number }[]>(
+      rig.client,
+      "search_catalog",
+      {}
+    );
+    const vouchesAfter = await call<unknown[]>(rig.client, "list_vouches", {});
+
+    assert.deepEqual(after, before);
+    assert.equal(vouchesAfter.length, vouchesBefore.length);
   });
 });
 

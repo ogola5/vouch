@@ -158,6 +158,36 @@ export class VouchService {
   }
 
   /* ---------------------------------------------------------------------
+   * Discovery
+   * ------------------------------------------------------------------ */
+
+  /**
+   * What the merchant sells, so an agent can name a real product id.
+   *
+   * PRICES ARE CONVERTED TO MAJOR UNITS HERE, and that is a deliberate
+   * choice about the audience. Everything crossing the UCP boundary is in
+   * minor units, but the consumer of this list is a language model, and a
+   * model shown `1249` alongside a mandate that says `max_price: 15` will
+   * conclude the item costs 1249 dollars and is wildly over budget. The
+   * mandate is in major units because a human wrote it; this list is in
+   * major units because a model reads it. The one number that must not be
+   * caller-supplied — the price the gate actually compares — is still read
+   * off the merchant's session in proposePurchase, never from here.
+   */
+  async searchCatalog(query?: string): Promise<
+    { product_id: string; title: string; brand: string; price: number; currency: string }[]
+  > {
+    const products = await this.merchant.listProducts(query);
+    return products.map((product) => ({
+      product_id: product.id,
+      title: product.title,
+      brand: product.brand,
+      price: toMajorUnits(product.price, product.currency),
+      currency: product.currency,
+    }));
+  }
+
+  /* ---------------------------------------------------------------------
    * THE GATE
    * ------------------------------------------------------------------ */
 

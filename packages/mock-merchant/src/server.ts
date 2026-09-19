@@ -132,11 +132,36 @@ export function createMerchantServer(options: MerchantServerOptions = {}): {
       }
     }
 
-    // Demo control surface — not UCP.
-    if (method === "GET" && path === "/demo/catalog") {
-      send(res, 200, { products: merchant.catalog.list() });
+    /*
+     * The product listing. NOT under /demo, and not under /ucp either, and
+     * the distinction is deliberate.
+     *
+     * Not /demo, because a real agent reads this to find out what exists —
+     * it is part of the merchant's actual surface, unlike the price lever
+     * below, which is a rig for driving the demo.
+     *
+     * Not /ucp, because we have not earned that prefix here. packages/shared
+     * implements the checkout REST binding against a verified snapshot; UCP's
+     * catalog surface lives in its MCP binding (`search_catalog`), which we
+     * have not implemented. Putting an invented route under /ucp would imply
+     * a spec conformance we did not check — which is exactly the mistake the
+     * ucp.ts rewrite was written to stop repeating.
+     */
+    if (method === "GET" && path === "/catalog") {
+      const query = url.searchParams.get("q")?.trim().toLowerCase();
+      const products = merchant.catalog.list();
+      send(res, 200, {
+        products: query
+          ? products.filter((p) =>
+              `${p.id} ${p.title} ${p.brand}`.toLowerCase().includes(query)
+            )
+          : products,
+      });
       return;
     }
+
+    // Demo control surface — not UCP, and not part of the merchant's real
+    // surface either. This is the lever that makes a price change happen.
 
     if (method === "POST" && path === "/demo/price") {
       const body = (await readJsonBody(req)) as { product_id?: string; price?: number };

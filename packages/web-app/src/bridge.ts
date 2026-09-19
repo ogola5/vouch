@@ -97,7 +97,10 @@ export class MerchantDemoClient {
   }
 
   async catalog(): Promise<{ products: unknown[] }> {
-    const response = await fetch(`${this.baseUrl}/demo/catalog`);
+    // /catalog, not /demo/catalog: the listing is part of the merchant's real
+    // surface (an agent reads it to find products), while /demo/price below
+    // is the rig for driving the demo.
+    const response = await fetch(`${this.baseUrl}/catalog`);
     if (!response.ok) {
       throw new Error(`Merchant catalog returned ${response.status}`);
     }

@@ -33,6 +33,7 @@ function directClient(merchant: Merchant): MerchantClient {
     updateSession: async (id, r) => merchant.updateSession(id, r),
     completeSession: async (id) => merchant.completeSession(id),
     cancelSession: async (id) => merchant.cancelSession(id),
+    listProducts: async () => merchant.catalog.list(),
   };
 }
 

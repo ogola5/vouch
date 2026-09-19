@@ -114,6 +114,34 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
   );
 
   /* ---------------------------------------------------------------------
+   * Discovery
+   * ------------------------------------------------------------------ */
+
+  server.registerTool(
+    "search_catalog",
+    {
+      title: "See what the merchant sells",
+      description:
+        "Find real products and their current prices. Call this BEFORE propose_purchase — " +
+        "product_id must be an id returned here, and guessing one will fail. Prices are in " +
+        "dollars, the same units a mandate's max_price uses, so they can be compared directly.",
+      inputSchema: {
+        query: z
+          .string()
+          .optional()
+          .describe("Optional filter matched against id, title and brand. Omit to list everything."),
+      },
+    },
+    async ({ query }) => {
+      try {
+        return json(await service.searchCatalog(query));
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  /* ---------------------------------------------------------------------
    * THE GATE
    * ------------------------------------------------------------------ */
 
@@ -129,7 +157,12 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
         "merchant, not from you.",
       inputSchema: {
         mandate_id: z.string(),
-        product_id: z.string().describe('Merchant catalog id, e.g. "detergent-brand-a"'),
+        product_id: z
+          .string()
+          .describe(
+            'An id from search_catalog, e.g. "detergent-brand-a". Do not guess or construct ' +
+              "one — call search_catalog first."
+          ),
         quantity: z.number().int().positive(),
         brand: z.string().describe("Brand as found in the catalog; feeds the new_brand rule."),
         confidence: z

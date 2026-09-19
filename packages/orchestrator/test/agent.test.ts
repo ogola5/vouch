@@ -48,6 +48,23 @@ describe("the system prompt keeps its non-negotiables", () => {
     assert.match(VOUCH_SYSTEM_PROMPT, /correlation, not proof/i);
   });
 
+  it("tells the agent to look up product ids rather than invent them", () => {
+    // The first live run failed here: the model constructed
+    // "brand-a-detergent" from the product's name. Real id:
+    // "detergent-brand-a". search_catalog now exists; the prompt has to point
+    // at it, or the tool is there and unused.
+    assert.match(VOUCH_SYSTEM_PROMPT, /search_catalog first/i);
+    assert.match(VOUCH_SYSTEM_PROMPT, /Never invent or construct an id/i);
+  });
+
+  it("forbids refusing on its own judgement instead of calling the gate", () => {
+    // The more serious of the two findings. A refusal the model makes itself
+    // leaves no Vouch and no session — the boundary stops being enforced and
+    // auditable, and becomes an opinion in a chat log.
+    assert.match(VOUCH_SYSTEM_PROMPT, /Do not decide on the household's behalf/i);
+    assert.match(VOUCH_SYSTEM_PROMPT, /leaves no record/i);
+  });
+
   it("tells the agent not to inflate its own confidence", () => {
     // The open question in BUILD_PLAN.md §7 is that nothing validates this
     // number. Until that is resolved the prompt is the only thing discouraging

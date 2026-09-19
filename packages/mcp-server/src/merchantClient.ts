@@ -18,11 +18,33 @@ import {
  * composition root passes HttpMerchantClient, which really does cross a
  * network boundary to packages/mock-merchant.
  */
+/**
+ * A product as the merchant lists it. Price is in ISO 4217 MINOR units here,
+ * like everything else crossing this boundary; conversion to the major units
+ * a human (or a model) reads happens one layer up, in VouchService.
+ */
+export interface MerchantProduct {
+  id: string;
+  title: string;
+  brand: string;
+  price: number;
+  currency: string;
+}
+
 export interface MerchantClient {
   createSession(request: UcpCreateCheckoutRequest): Promise<UcpCheckoutSession>;
   updateSession(id: string, request: UcpUpdateCheckoutRequest): Promise<UcpCheckoutSession>;
   completeSession(id: string): Promise<UcpCheckoutSession>;
   cancelSession(id: string): Promise<UcpCheckoutSession>;
+  /**
+   * Added after the first live agent run, which found the gap the hard way:
+   * asked to restock Brand A, the model invented the product id
+   * "brand-a-detergent" (the real one is "detergent-brand-a") and the
+   * purchase failed. An agent that cannot see what exists cannot buy
+   * anything, and — worse — falls back to answering from its own judgement
+   * instead of calling the gate. See BUILD_PLAN.md §7.
+   */
+  listProducts(query?: string): Promise<MerchantProduct[]>;
 }
 
 export class MerchantRequestError extends Error {
@@ -104,5 +126,20 @@ export class HttpMerchantClient implements MerchantClient {
 
   cancelSession(id: string): Promise<UcpCheckoutSession> {
     return this.request("POST", `/ucp/checkout-sessions/${encodeURIComponent(id)}/cancel`);
+  }
+
+  async listProducts(query?: string): Promise<MerchantProduct[]> {
+    const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
+    const response = await fetch(`${this.baseUrl.replace(/\/$/, "")}/catalog${suffix}`, {
+      headers: { [UCP_HEADERS.requestId]: randomUUID() },
+    });
+    if (!response.ok) {
+      throw new MerchantRequestError(
+        response.status,
+        `GET /catalog -> ${response.status}: ${await response.text()}`
+      );
+    }
+    const body = (await response.json()) as { products?: MerchantProduct[] };
+    return body.products ?? [];
   }
 }

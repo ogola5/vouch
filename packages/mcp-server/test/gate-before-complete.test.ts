@@ -67,6 +67,14 @@ class RecordingMerchantClient implements MerchantClient {
     this.calls.push("cancel");
     return this.merchant.cancelSession(id);
   }
+
+  async listProducts(query?: string) {
+    this.calls.push("listProducts");
+    const products = this.merchant.catalog.list();
+    return query
+      ? products.filter((p) => `${p.id} ${p.title} ${p.brand}`.toLowerCase().includes(query.toLowerCase()))
+      : products;
+  }
 }
 
 interface Rig {
