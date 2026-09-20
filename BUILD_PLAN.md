@@ -664,6 +664,15 @@
     rate-limited calls, parsing the `"retryDelay": "42s"` Google supplies rather than guessing a
     backoff. Strands' own `DefaultModelRetryStrategy` does not cover this — it only treats
     `ModelThrottledError` as retryable, and Gemini's 429 arrives wrapped as a plain `ModelError`.
+  - **`gemini-2.5-flash-lite` TRIED AND REJECTED (2026-09-20).** The obvious move, since quota is
+    per-model and a lighter model would have bought a fresh budget. It does not work: the agent
+    returns **empty replies and makes no tool calls**. 1 of 5 live tests passed, assertion inputs
+    came back as `''`, and a demo rehearsal stalled on its first turn. On plain Flash the same
+    code calls `search_catalog` unprompted and reports real ids. Note the trap — the standalone
+    `npm run check:model` **passes** on Flash-Lite, because answering a plain prompt is not the
+    thing it is bad at. Tool-calling is, and tool-calling is the orchestrator's whole job.
+    So the quota ceiling stands until Bedrock, and it is a scheduling constraint on rehearsal
+    rather than something a cheaper model solves.
   - **Process lesson, recorded because it cost a day's quota twice.** Run ONE live test, not the
     whole file: `npm run test:live -- --test-name-pattern="accepts being stopped"`. Running the
     full suite to answer a single question spends the budget that answering it needed.

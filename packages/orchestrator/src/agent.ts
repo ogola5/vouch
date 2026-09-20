@@ -130,6 +130,26 @@ export interface AskResult {
   stopReason: string;
 }
 
+/**
+ * Flash, not Flash-Lite. **Flash-Lite was tried on 2026-09-20 and rejected**,
+ * and the evidence is recorded here so it is not retried on the assumption
+ * that a cheaper model is obviously the answer to the quota problem.
+ *
+ * The attraction was real: free-tier quota is bucketed PER MODEL (the 429's
+ * `quotaDimensions` names the model explicitly), so moving would have bought
+ * a fresh budget as well as a lighter model. But on Flash-Lite the agent
+ * returned **empty replies and made no tool calls** — 1 of 5 live tests
+ * passed, the assertion inputs came back as `''`, and a demo rehearsal
+ * stalled on its first turn. On Flash the same code calls `search_catalog`
+ * unprompted and reports real product ids.
+ *
+ * It answers a plain prompt fine, which is what made it look viable: the
+ * standalone `npm run check:model` passes on Flash-Lite. Tool-calling is
+ * where it falls over, and tool-calling is this component's entire job.
+ *
+ * This stays a constructor argument: Bedrock replaces it when the AWS credit
+ * lands, with no other change.
+ */
 export const DEFAULT_MODEL_ID = "gemini-2.5-flash";
 
 /**
