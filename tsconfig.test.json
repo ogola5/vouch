@@ -34,5 +34,11 @@
   },
   // Only the test files are listed; the source they import is pulled in
   // transitively and checked along with them.
-  "include": ["test/**/*.ts", "packages/*/test/**/*.ts"]
+  // Operational scripts are included here too. They live outside any
+  // package's build `include` (they are tools, not library code, and nothing
+  // should be able to import them), so without this line they would be the
+  // only TypeScript in the repo that is never typechecked — and they are
+  // exactly the code you run once, under time pressure, against a live
+  // third-party service.
+  "include": ["test/**/*.ts", "packages/*/test/**/*.ts", "packages/*/scripts/**/*.ts"]
 }

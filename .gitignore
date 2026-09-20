@@ -14,6 +14,12 @@ build/
 # the moment `npm run dev:mcp-server` is started.
 *.db-wal
 *.db-shm
+
+# Captured Ring webhook deliveries. Never committed: they carry real device
+# ids, a real HMAC signature and whatever else Ring puts on the wire for this
+# account. The capture file is evidence for writing types against, not source.
+webhook-capture.jsonl
+*.jsonl
 *.sqlite-wal
 *.sqlite-shm
 .DS_Store

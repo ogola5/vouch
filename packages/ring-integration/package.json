@@ -6,7 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -b tsconfig.json"
+    "build": "tsc -b tsconfig.json",
+    "capture": "node --env-file-if-exists=../../.env scripts/capture.ts"
   },
   "dependencies": {
     "@vouch/shared": "*"
