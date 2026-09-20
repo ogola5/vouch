@@ -690,6 +690,28 @@
   linking is not completed, because it requires a user-identity system this product deliberately
   does not have."* Stating that plainly is stronger in review than a half-built login page.
 
+  **DECIDED AND CLOSED 2026-09-20: receiver only, linking not attempted.** Agreed by the project
+  owner. `RealRingProvider` is built, verified and opt-in behind `RING_MODE=real`;
+  `MockRingProvider` stays the default so the demo's corroborated beat cannot silently break on
+  an empty event store. The cloudflared tunnel and the capture listener have been shut down —
+  quick-tunnel hostnames are ephemeral, so anything registered in the portal against
+  `museums-sponsors-fwd-cricket.trycloudflare.com` is now dead and would need re-registering if
+  this is ever picked up again.
+
+  **What was learned along the way, worth keeping:**
+  - The Ring portal saved the four URLs on **format validation only** — it never issued a
+    reachability ping. So a saved configuration is not evidence that anything works, and no
+    delivery will arrive until linking completes.
+  - A quick tunnel can register at the Cloudflare edge and still never publish a DNS record: the
+    first hostname was unreachable from three separate networks for six minutes. If a tunnel
+    looks dead, cycle it before debugging anything else.
+  - `webhook-capture.jsonl` contains four entries, all of them our own probes. **No Ring payload
+    was ever captured**, which is precisely why `src/types.ts` is marked
+    documented-not-captured rather than treated as verified.
+
+  **If this is revisited:** the remaining work is the identity model, not the Ring code. The
+  receiver, the signature verification and the correlation are done and tested.
+
 - **CORRECTION (2026-09-20): the binding Gemini limit is 5 requests per MINUTE, not the daily
   one.** The quota id that actually fires is
   `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`, value 5. Since one conversational turn
