@@ -25,7 +25,19 @@ import { fileURLToPath } from "node:url";
  */
 
 const PORT = Number(process.env.RING_CAPTURE_PORT ?? 4100);
-const HMAC_KEY = process.env.RING_HMAC_KEY ?? "";
+
+/**
+ * Accepts either name. The Ring Developer Portal labels its three values
+ * `CLIENT_ID`, `CLIENT_SECRET` and `HMAC_SIGNATURE_KEY`, so those are what a
+ * developer has in front of them to paste. The `RING_`-prefixed forms are
+ * preferred in this repo because the root `.env` is shared by every service —
+ * a bare `CLIENT_ID` will collide the first time an AWS or Amazon developer
+ * credential lands beside it, and that collision is silent.
+ *
+ * Reading both costs one `??` and removes a transcription step, which is
+ * worth more than tidiness while wiring up a live integration.
+ */
+const HMAC_KEY = process.env.RING_HMAC_KEY ?? process.env.HMAC_SIGNATURE_KEY ?? "";
 
 /** Package root, resolved from this file so the cwd does not matter. */
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
