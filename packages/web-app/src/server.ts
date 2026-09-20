@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { MerchantDemoClient, VouchBridge } from "./bridge.ts";
+import { ChatSession } from "./chat.ts";
 
 /**
  * The web app's HTTP surface: a handful of JSON endpoints for the page, plus
@@ -37,9 +38,14 @@ export interface WebAppOptions {
   merchantUrl: string;
 }
 
-export function createWebApp(options: WebAppOptions): { server: Server; bridge: VouchBridge } {
+export function createWebApp(options: WebAppOptions): {
+  server: Server;
+  bridge: VouchBridge;
+  chat: ChatSession;
+} {
   const bridge = new VouchBridge(options.mcpUrl);
   const merchant = new MerchantDemoClient(options.merchantUrl);
+  const chat = new ChatSession(options.mcpUrl);
 
   const server = createServer((req, res) => {
     void handle(req, res).catch((error: unknown) => {
@@ -82,7 +88,36 @@ export function createWebApp(options: WebAppOptions): { server: Server; bridge: 
 
     if (method === "GET" && path === "/api/health") {
       await bridge.connect();
-      sendJson(res, 200, { ok: true, tools: await bridge.listToolNames() });
+      sendJson(res, 200, {
+        ok: true,
+        tools: await bridge.listToolNames(),
+        chat: chat.status(),
+      });
+      return;
+    }
+
+    /*
+     * The conversation. Reported as a 503 rather than a 500 when the model is
+     * unconfigured, because the console is not broken in that case — the gate,
+     * the record and every control below still work. The page says so and
+     * stays usable, which is the whole reason the agent is built lazily.
+     */
+    if (method === "POST" && path === "/api/chat") {
+      const body = await readJsonBody(req);
+      const message = typeof body.message === "string" ? body.message.trim() : "";
+      if (!message) {
+        sendJson(res, 400, { error: "Say something first." });
+        return;
+      }
+      if (chat.status().status === "unconfigured") {
+        sendJson(res, 503, { error: chat.status().detail });
+        return;
+      }
+      try {
+        sendJson(res, 200, await chat.send(message));
+      } catch (error) {
+        sendJson(res, 502, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 
@@ -132,19 +167,19 @@ export function createWebApp(options: WebAppOptions): { server: Server; bridge: 
     sendJson(res, 404, { error: `No route for ${method} ${path}` });
   }
 
-  return { server, bridge };
+  return { server, bridge, chat };
 }
 
 export function startWebApp(
   port: number,
   options: WebAppOptions
-): Promise<{ server: Server; bridge: VouchBridge; url: string }> {
-  const { server, bridge } = createWebApp(options);
+): Promise<{ server: Server; bridge: VouchBridge; chat: ChatSession; url: string }> {
+  const { server, bridge, chat } = createWebApp(options);
   return new Promise((resolve) => {
     server.listen(port, "127.0.0.1", () => {
       const address = server.address();
       const actualPort = typeof address === "object" && address ? address.port : port;
-      resolve({ server, bridge, url: `http://127.0.0.1:${actualPort}` });
+      resolve({ server, bridge, chat, url: `http://127.0.0.1:${actualPort}` });
     });
   });
 }

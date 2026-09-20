@@ -140,6 +140,59 @@ describe("the demo levers work from the browser's side", () => {
   });
 });
 
+describe("chat degrades without taking the console with it", () => {
+  // These run with no GEMINI_API_KEY in the test environment, which is the
+  // case that matters: the console is the household's evidence surface, and
+  // evidence that vanishes when an unrelated API key expires is not evidence.
+  const configured = Boolean(process.env.GEMINI_API_KEY?.trim());
+
+  it("reports chat status alongside the tool list", async () => {
+    const health = await get<{ chat: { status: string; detail: string } }>("/api/health");
+    assert.ok(["ready", "unconfigured", "failed"].includes(health.chat.status));
+    if (!configured) {
+      assert.equal(health.chat.status, "unconfigured");
+      assert.match(health.chat.detail, /still works/i);
+    }
+  });
+
+  it("refuses an empty message before spending a model call", async () => {
+    const response = await fetch(`${web.url}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "   " }),
+    });
+    assert.equal(response.status, 400);
+  });
+
+  it("answers an unconfigured model with 503, not 500", async () => {
+    if (configured) return; // nothing to assert when a key is present
+    const response = await fetch(`${web.url}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    // 503 rather than 500 because nothing is broken — the gate, the record and
+    // every control still work. The page says which part is unavailable.
+    assert.equal(response.status, 503);
+  });
+
+  it("leaves the gate and the record fully working with no model at all", async () => {
+    // The claim the lazy agent exists to protect, asserted rather than assumed.
+    const state = await get<{ catalog: unknown[] }>("/api/state");
+    assert.equal(state.catalog.length, 3);
+
+    const result = await tool<{ outcome: string }>("propose_purchase", {
+      mandate_id: "m_detergent",
+      product_id: "detergent-brand-c",
+      quantity: 1,
+      brand: "Brand C",
+      confidence: 0.95,
+      reason: ["no_model_needed"],
+    });
+    assert.equal(result.outcome, "held_for_approval");
+  });
+});
+
 describe("the console cannot misreport the gate", () => {
   it("shows a completed purchase as complete", async () => {
     const result = await tool<{ outcome: string }>("propose_purchase", {

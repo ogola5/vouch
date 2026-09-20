@@ -7,10 +7,11 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -b tsconfig.json",
-    "dev": "node --watch src/main.ts"
+    "dev": "node --watch --env-file-if-exists=../../.env src/main.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@vouch/orchestrator": "*",
     "@vouch/shared": "*"
   },
   "devDependencies": {

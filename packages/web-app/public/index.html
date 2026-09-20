@@ -125,6 +125,37 @@
   .note { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line);
           padding-top: 10px; margin-top: 14px; }
   code { font-family: ui-monospace, monospace; font-size: 12.5px; }
+
+  /* ---- conversation ---- */
+  .transcript { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px;
+                max-height: 46vh; overflow-y: auto; }
+  .transcript:empty { display: none; }
+  .turn { display: flex; flex-direction: column; gap: 6px; }
+  .said { align-self: flex-end; max-width: 78%; background: var(--accent); color: var(--accent-ink);
+          padding: 9px 13px; border-radius: 14px 14px 3px 14px; }
+  .replied { align-self: flex-start; max-width: 88%; background: var(--bg);
+             border: 1px solid var(--line); padding: 10px 13px; border-radius: 14px 14px 14px 3px;
+             white-space: pre-wrap; }
+
+  /*
+   * The agent's working, shown rather than hidden. Most assistants suppress
+   * tool calls so the result feels like magic; here, watching it check the
+   * mandate IS the product, so suppressing it would delete the thing being
+   * demonstrated. Rendered as plain phrases, not function signatures.
+   */
+  .work { align-self: flex-start; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .step { font-size: 12px; color: var(--muted); background: var(--bg);
+          border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+  .step.stop { background: var(--hold-bg); color: var(--hold); border-color: transparent; font-weight: 600; }
+  .step.failed { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+
+  .composer { display: flex; gap: 8px; }
+  .composer input { flex: 1; }
+  .chip-btn { border-radius: 999px; margin: 0 6px 6px 0; color: var(--muted); }
+  .thinking { align-self: flex-start; font-size: 13px; color: var(--muted); font-style: italic; }
+  .banner { font-size: 13.5px; padding: 10px 13px; border-radius: 8px; margin-bottom: 12px;
+            background: var(--hold-bg); color: var(--hold); }
+  .banner.err { background: var(--bad-bg); color: var(--bad); }
 </style>
 </head>
 <body>
@@ -139,6 +170,35 @@
     Everything here goes through the same MCP tools an agent calls. Nothing on this page
     decides anything — the gate lives in the server, so what you see is what an agent sees.
   </p>
+
+  <!-- 0. THE CONVERSATION -->
+  <section>
+    <h2>Talk to it</h2>
+    <p class="hint">
+      Say what you want in your own words. You'll see every step it takes — checking your
+      mandate is the point, not an implementation detail worth hiding.
+    </p>
+
+    <div id="chatBanner" hidden></div>
+    <div id="transcript" class="transcript"></div>
+
+    <div class="composer">
+      <input id="chatInput" placeholder="Keep detergent stocked, under $15 a month…"
+             autocomplete="off" />
+      <button class="primary" id="chatSend">Send</button>
+    </div>
+
+    <!-- Examples, not a menu. "Be adaptable" is about accepting the
+         household's own words; these exist to show the range, not to be the
+         only way in. -->
+    <div id="chips" style="margin-top:10px">
+      <button class="small chip-btn" data-say="Keep laundry detergent stocked. Under $15, I prefer Brand A, Brand B is fine too.">set a mandate</button>
+      <button class="small chip-btn" data-say="What detergent can you actually buy right now?">what's available</button>
+      <button class="small chip-btn" data-say="Restock the Brand A detergent, one bottle.">restock it</button>
+      <button class="small chip-btn" data-say="Buy the Brand C one, the 96-load bottle.">try the expensive one</button>
+      <button class="small chip-btn" data-say="What have you bought me so far?">what did you buy</button>
+    </div>
+  </section>
 
   <!-- 1. THE WORLD -->
   <section>
@@ -319,6 +379,7 @@ function renderCatalog() {
         });
         toast(`${id} is now ${money(price)}`);
         await refresh();
+chatBanner();
       } catch (e) { toast(e.message, true); }
     });
   });
@@ -635,7 +696,112 @@ $("seedBtn").addEventListener("click", async () => {
   } catch (e) { toast(e.message, true); }
 });
 
+/* ---------- the conversation ---------- */
+
+/*
+ * Tool names, in the household's language. "Be relatable" is the Alexa design
+ * guide's fourth principle — talk with people, not at them — and it applies to
+ * the machinery as much as to the sentences. Showing `propose_purchase({...})`
+ * would be honest and useless; "checked it against your mandate" is honest and
+ * legible, which is what makes the gate visible rather than merely present.
+ */
+const STEP_LABEL = {
+  search_catalog: "looked at what's in stock",
+  create_mandate: "wrote down your instruction",
+  get_mandate: "checked what you've allowed",
+  list_mandates: "checked what you've allowed",
+  pause_mandate: "changed whether it may act",
+  propose_purchase: "checked it against your mandate",
+  record_dispute: "tightened your mandate",
+  list_vouches: "read back your history",
+  explain_vouch: "looked up why",
+};
+
+function renderStep(call) {
+  const label = STEP_LABEL[call.name] ?? call.name;
+  const cls = call.failed ? "step failed" : call.name === "propose_purchase" ? "step stop" : "step";
+  return `<span class="${cls}">${label}</span>`;
+}
+
+function addTurn(said) {
+  const wrap = document.createElement("div");
+  wrap.className = "turn";
+  wrap.innerHTML = `<div class="said">${escapeHtml(said)}</div>
+                    <div class="thinking">thinking…</div>`;
+  $("transcript").appendChild(wrap);
+  $("transcript").scrollTop = $("transcript").scrollHeight;
+  return wrap;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+let chatBusy = false;
+
+async function say(message) {
+  if (chatBusy || !message.trim()) return;
+  chatBusy = true;
+  $("chatSend").disabled = true;
+  $("chatInput").value = "";
+
+  const wrap = addTurn(message);
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    const body = await res.json();
+
+    if (!res.ok) {
+      wrap.querySelector(".thinking").outerHTML =
+        `<div class="replied"><span class="badge bad">couldn't answer</span> ${escapeHtml(body.error)}</div>`;
+    } else {
+      const work = body.toolCalls?.length
+        ? `<div class="work">${body.toolCalls.map(renderStep).join("")}</div>`
+        : "";
+      wrap.querySelector(".thinking").outerHTML =
+        `${work}<div class="replied">${escapeHtml(body.text)}</div>`;
+    }
+  } catch (e) {
+    wrap.querySelector(".thinking").outerHTML =
+      `<div class="replied"><span class="badge bad">couldn't answer</span> ${escapeHtml(e.message)}</div>`;
+  } finally {
+    chatBusy = false;
+    $("chatSend").disabled = false;
+    $("transcript").scrollTop = $("transcript").scrollHeight;
+    // The conversation changes the record, so the panels below follow it.
+    // Watching the mandate card move while the agent explains why is the
+    // demo's whole payoff — it has to happen in one beat, not on a refresh.
+    await refresh();
+  }
+}
+
+$("chatSend").addEventListener("click", () => say($("chatInput").value));
+$("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") say($("chatInput").value); });
+document.querySelectorAll(".chip-btn").forEach((b) =>
+  b.addEventListener("click", () => say(b.dataset.say)));
+
 /* ---------- loop ---------- */
+
+async function chatBanner() {
+  try {
+    const health = await api("/api/health");
+    const banner = $("chatBanner");
+    if (health.chat?.status === "ready") { banner.hidden = true; return; }
+    // Said plainly rather than hidden: the console is not broken without a
+    // model, and a household should be told which part is unavailable rather
+    // than left typing into a box that silently does nothing.
+    banner.className = health.chat?.status === "failed" ? "banner err" : "banner";
+    banner.textContent = health.chat?.detail ?? "Chat unavailable.";
+    banner.hidden = false;
+    $("chatInput").disabled = true;
+    $("chatSend").disabled = true;
+  } catch { /* the connection dot already reports this */ }
+}
 
 async function refresh() {
   try {
