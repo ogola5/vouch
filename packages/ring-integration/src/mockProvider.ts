@@ -22,9 +22,18 @@ export class MockRingProvider implements PhysicalEvidenceProvider {
 
   async correlateDelivery(request: CorrelationRequest): Promise<PhysicalEvidence> {
     const status = this.scripted.get(request.order_id) ?? "unconfirmed";
+    const corroborated = status === "corroborated";
     return {
-      ring_event_id: status === "corroborated" ? `mock-ring-evt-${request.order_id}` : null,
+      ring_event_id: corroborated ? `mock-ring-evt-${request.order_id}` : null,
       correlation_status: status,
+      // A scripted corroboration stands in for a real motion event, so it
+      // carries the same shape a real one would — including the
+      // classification, which is what stops a vehicle being mistaken for a
+      // person at the door. A simulator that omitted these would make the
+      // demo show less than the real provider does, which is the wrong way
+      // round for a stand-in.
+      event_type: corroborated ? "motion_detected" : null,
+      classification: corroborated ? "human" : null,
     };
   }
 }

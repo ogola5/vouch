@@ -33,9 +33,25 @@ export const DigitalEvidence = z.object({
 });
 export type DigitalEvidence = z.infer<typeof DigitalEvidence>;
 
+/**
+ * `event_type` and `classification` close the action item recorded in
+ * BUILD_PLAN.md §1: the old shape carried only an id and a status, so a
+ * vehicle passing on the street and a person at the door produced an
+ * identical "corroborated" record.
+ *
+ * Both default to null, so every Vouch written before they existed still
+ * parses. They are populated only when a provider actually held an event:
+ * "unconfirmed" and "not_applicable" leave them null, because there is
+ * nothing to describe. Claiming a classification without an event would be
+ * exactly the overclaim the guardrails exist to prevent.
+ */
 export const PhysicalEvidence = z.object({
   ring_event_id: z.string().nullable(),
   correlation_status: CorrelationStatus,
+  /** e.g. "motion_detected" — never a delivery, because Ring publishes none. */
+  event_type: z.string().nullable().default(null),
+  /** Ring's own vision classification: human / animal / vehicle / other. */
+  classification: z.enum(["human", "animal", "vehicle", "other"]).nullable().default(null),
 });
 export type PhysicalEvidence = z.infer<typeof PhysicalEvidence>;
 

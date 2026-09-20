@@ -315,7 +315,12 @@ export class VouchService {
           // No purchase was made, so there is nothing a doorbell could
           // corroborate. "not_applicable" rather than "unconfirmed": the
           // latter would imply we are still waiting on evidence.
-          physical: { ring_event_id: null, correlation_status: "not_applicable" },
+          physical: {
+            ring_event_id: null,
+            correlation_status: "not_applicable",
+            event_type: null,
+            classification: null,
+          },
         },
         confidence: confidenceLevel(input.confidence),
         user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
@@ -546,7 +551,12 @@ export class VouchService {
           expected_around: now,
           window_minutes: RING_CORRELATION_WINDOW_MINUTES,
         })
-      : { ring_event_id: null, correlation_status: "not_applicable" as const };
+      : {
+          ring_event_id: null,
+          correlation_status: "not_applicable" as const,
+          event_type: null,
+          classification: null,
+        };
 
     const vouch: Vouch = {
       vouch_id: args.vouchId ?? `vouch_${randomUUID()}`,

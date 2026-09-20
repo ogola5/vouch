@@ -35,7 +35,12 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     action: { ucp_session_id: "sess_1", status: "Complete" },
     evidence: {
       digital: { order_id: "order_1", timestamp: new Date().toISOString(), payment_token_ref: null },
-      physical: { ring_event_id: null, correlation_status: "unconfirmed" },
+      physical: {
+        ring_event_id: null,
+        correlation_status: "unconfirmed",
+        event_type: null,
+        classification: null,
+      },
     },
     confidence: "high",
     user_controls: ["explain", "dispute"],

@@ -653,6 +653,43 @@
   process, not the agent: **check what the process is actually connected to before believing what
   it reports.**
 
+- **Ring account linking needs a user-identity system this product does not have (opened
+  2026-09-20 — decide before spending days on it).**
+
+  Registering a webhook in the Ring Developer Portal requires three further URLs: an Account Link
+  URL, a Token Exchange URL and an App Homepage URL. Verified against
+  [Ring's API documentation](https://developer.amazon.com/docs/ring/api-documentation.html): this
+  is **not** "be an OAuth server". Ring calls it one-way linking —
+
+  1. Ring POSTs an authorization code to the Token Exchange URL; the partner redeems it against
+     `https://oauth.ring.com/oauth/token` **within 60 seconds** and stores the result *unclaimed*.
+  2. Ring redirects the user to the Account Link URL carrying `nonce` and `time`.
+  3. The partner validates timestamp freshness (600s), then — the docs are explicit — **"must
+     present a sign-in or create-account form. The sign-in establishes the partner-side user
+     identity required to claim the unclaimed token."**
+  4. The partner matches `HMAC-SHA256("<time>:<account_id>", hmac_key)` against the nonce, then
+     calls App-Integrations POST and PATCH to complete.
+
+  **Step 3 is the wall.** Vouch is a single local household with no accounts, no sign-in and no
+  user table — §2's household multi-user story is already a recorded scope cut for exactly this
+  reason. Account linking would mean building the identity model that cut avoided, on a secondary
+  integration, against an Oct 23 deadline.
+
+  **What real Ring would actually buy, stated honestly.** Not the honesty claim: §1 already
+  establishes that Ring publishes no package-delivered event, so a real webhook yields
+  *correlation against an expected window*, never proof — identical to what `MockRingProvider`
+  reports. What it buys is Tech Implementation credit for a live API integration, and a demo beat
+  where the doorbell is genuinely the owner's.
+
+  **Recommendation: implement the receiving half for real, skip the linking half.** Build
+  `RealRingProvider` as a genuine webhook receiver — HMAC-SHA256 verification over the raw body,
+  real event parsing, real mapping into `PhysicalEvidence` — and exercise it with a *signed
+  synthetic delivery through the live tunnel*. That makes the integration code real and tested
+  rather than mocked, costs hours instead of days, and supports a claim that is precisely true:
+  *"the webhook receiver, signature verification and event mapping are real; partner account
+  linking is not completed, because it requires a user-identity system this product deliberately
+  does not have."* Stating that plainly is stronger in review than a half-built login page.
+
 - **CORRECTION (2026-09-20): the binding Gemini limit is 5 requests per MINUTE, not the daily
   one.** The quota id that actually fires is
   `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`, value 5. Since one conversational turn
