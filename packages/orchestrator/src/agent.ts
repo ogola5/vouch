@@ -1,6 +1,54 @@
-import { Agent, AfterToolCallEvent } from "@strands-agents/sdk";
+import { Agent, AfterToolCallEvent, ModelRetryStrategy } from "@strands-agents/sdk";
+import type { AfterModelCallEvent } from "@strands-agents/sdk";
 import { GoogleModel } from "@strands-agents/sdk/models/google";
 import { connectVouchToolset, type VouchToolsetOptions } from "./toolset.ts";
+
+/**
+ * Retries a model call that was rate-limited, waiting as long as the provider
+ * asked to be waited for.
+ *
+ * Strands ships `DefaultModelRetryStrategy`, but it only treats
+ * `ModelThrottledError` as retryable, and Gemini's 429 arrives wrapped as a
+ * plain `ModelError`, so nothing retried. Measured on the free tier: the
+ * binding limit is **5 requests per minute**, not the 20-per-day figure that
+ * was more obvious — and one conversational turn costs several requests,
+ * because every tool result goes back to the model for another call. So a
+ * single agent turn can rate-limit itself halfway through.
+ *
+ * This matters well beyond the test suite. A demo recording that dies on a
+ * 429 in the middle of the one sequence the submission is built around is a
+ * far worse outcome than one that pauses for forty seconds.
+ *
+ * Google states how long to wait in the error body (`"retryDelay": "42s"`),
+ * so that value is parsed and honoured rather than guessed at with a fixed
+ * backoff that would either give up too early or sleep far longer than needed.
+ */
+export class QuotaAwareRetryStrategy extends ModelRetryStrategy {
+  readonly name = "vouch-quota-aware-retry";
+  private readonly maxAttempts: number;
+
+  constructor(maxAttempts = 4) {
+    super();
+    this.maxAttempts = maxAttempts;
+  }
+
+  protected computeRetryDecision(event: AfterModelCallEvent) {
+    const message = event.error instanceof Error ? event.error.message : String(event.error ?? "");
+    const rateLimited = message.includes("429") || message.includes("RESOURCE_EXHAUSTED");
+
+    if (!rateLimited || event.attemptCount >= this.maxAttempts) {
+      return { retry: false as const };
+    }
+
+    // e.g. "retryDelay": "42s" — seconds only, which is all Google sends.
+    const asked = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(message);
+    const waitMs = asked
+      ? Math.ceil(Number(asked[1]) * 1000) + 1_000 // a second's grace either side of their clock
+      : Math.min(60_000, 2_000 * 2 ** (event.attemptCount - 1));
+
+    return { retry: true as const, waitMs };
+  }
+}
 
 /**
  * The orchestrator: the thing that turns "keep detergent stocked under $15 a
@@ -55,6 +103,8 @@ export interface VouchAgentOptions extends VouchToolsetOptions {
   modelId?: string;
   /** Overridable so a test can assert on a narrower prompt. */
   systemPrompt?: string;
+  /** Model attempts before a rate-limit error is allowed to surface. */
+  maxModelAttempts?: number;
 }
 
 export interface ToolCallRecord {
@@ -105,6 +155,9 @@ export async function createVouchAgent(options: VouchAgentOptions): Promise<Vouc
     }),
     systemPrompt: options.systemPrompt ?? VOUCH_SYSTEM_PROMPT,
     tools,
+    // Per the SDK's note, a strategy carries per-budget state and must not be
+    // shared between agents, so it is constructed here rather than module-wide.
+    retryStrategy: new QuotaAwareRetryStrategy(options.maxModelAttempts ?? 4),
   });
 
   const calls: ToolCallRecord[] = [];

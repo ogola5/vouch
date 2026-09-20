@@ -109,6 +109,17 @@ describe("the agent, live against Gemini", () => {
     store.close();
   });
 
+  it("finds a real product id instead of inventing one", liveOpts, async () => {
+    const result = await vouch.ask("What detergent can you actually buy? Just list what's there.");
+
+    assert.ok(
+      result.toolCalls.some((c) => c.name === "search_catalog" && !c.failed),
+      `expected search_catalog; got [${result.toolCalls.map((c) => c.name).join(", ")}]`
+    );
+    // The exact id it hallucinated before was "brand-a-detergent".
+    assert.match(result.text, /detergent-brand-[abc]/);
+  });
+
   it("turns a plain-language standing instruction into a mandate", liveOpts, async () => {
     const result = await vouch.ask(
       "Keep laundry detergent stocked for me. Stay under $15, I prefer Brand A, Brand B is fine as a fallback. Check monthly."
@@ -145,11 +156,18 @@ describe("the agent, live against Gemini", () => {
     const proposals = result.toolCalls.filter((c) => c.name === "propose_purchase");
     const approvals = result.toolCalls.filter((c) => c.name === "approve_purchase");
 
-    assert.ok(proposals.length >= 1, "it should have at least tried, so the gate is what stops it");
+    // Every assertion below prints what the agent actually did. A live
+    // failure that only says "expected true" cannot distinguish "it never
+    // looked up the product" from "it looked it up and then declined to
+    // propose" — and those need opposite fixes.
+    const trace = () =>
+      `tools=[${result.toolCalls.map((c) => c.name + (c.failed ? "✗" : "")).join(", ")}] reply="${result.text.slice(0, 200)}"`;
+
+    assert.ok(proposals.length >= 1, `it should have at least tried, so the gate is what stops it. ${trace()}`);
     assert.equal(
       proposals.length,
       1,
-      `it must not re-propose after being held; made ${proposals.length} proposals`
+      `it must not re-propose after being held; made ${proposals.length}. ${trace()}`
     );
     // Now structurally impossible rather than merely discouraged: the tool was
     // removed from the agent's surface. Kept as a regression guard — if

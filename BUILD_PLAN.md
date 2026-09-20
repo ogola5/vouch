@@ -577,6 +577,19 @@
       from CodeArtifact and nothing else. (`ask-cli` v2.30.7 is real but is the legacy Alexa Skills
       Kit CLI — a different product, not the add-on toolkit.)
 
+      **The block costs far less than it first appeared (2026-09-20).** An official Devpost
+      update states the Alexa+ track as: *"build an Agent Skill **or a self hosted MCP server** on
+      the open MCP standard"*, and points at `modelcontextprotocol.io`. A self-hosted MCP server
+      is therefore a **first-class path, not a fallback** — which is exactly what
+      `packages/mcp-server` is. The same update says outright: *"No MCP experience? Simulate the
+      Alexa+ experience with any agentic tools you already know."*
+
+      So the framing for the writeup is not "we wanted the add-on and could not get it". It is
+      "we built the self-hosted MCP server the track asks for, and separately found that the
+      add-on path is gated behind onboarding a hackathon entrant cannot self-serve" — which is
+      a finding worth submitting as developer feedback rather than an apology. Keep the §7 record
+      of the attempt; drop any language implying we fell short of the track's requirement.
+
       **Resolution: fall back to Option C, now.** This is not a retreat from B on preference; B was
       tried and is gated by access we do not have. C was the original recommendation and the MCP
       server is unchanged either way, so nothing built so far is wasted. Concretely: the Strands
@@ -597,6 +610,15 @@
   step 3)**
 
   Two findings from the first live run, and the second is the serious one.
+
+  **(a) CLOSED, verified live 2026-09-20.** With `search_catalog` in place the agent calls it
+  unprompted and returns the real ids — "Product ID: `detergent-brand-a`" — instead of inventing
+  `brand-a-detergent`. Confirmed by observing the tool call, not the reply text.
+
+  **(b) STILL UNVERIFIED.** The run that would have answered it was lost to the 5-per-minute
+  limit above. Since (a) was the suspected cause of (b), the honest position is that (b) may
+  already be fixed and simply has not been measured. Do not build a structural fix for it until
+  one clean run has been observed.
 
   **(a) There is no catalog tool.** Asked to restock Brand A, the model invented the product id
   `brand-a-detergent`; the real id is `detergent-brand-a`, and `propose_purchase` failed. Nothing
@@ -630,6 +652,21 @@
   `EADDRINUSE`, and the agent was talking to an older database. The lesson is about the finding
   process, not the agent: **check what the process is actually connected to before believing what
   it reports.**
+
+- **CORRECTION (2026-09-20): the binding Gemini limit is 5 requests per MINUTE, not the daily
+  one.** The quota id that actually fires is
+  `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`, value 5. Since one conversational turn
+  costs several requests — every tool result goes back to the model for another call — **a single
+  agent turn can rate-limit itself halfway through**, and a test file running turns back to back
+  exhausts it in seconds. The daily figure below is real but is rarely what stops you.
+  - Mitigated in code, because a demo recording that dies on a 429 mid-sequence is far worse than
+    one that pauses: `QuotaAwareRetryStrategy` in `packages/orchestrator/src/agent.ts` retries
+    rate-limited calls, parsing the `"retryDelay": "42s"` Google supplies rather than guessing a
+    backoff. Strands' own `DefaultModelRetryStrategy` does not cover this — it only treats
+    `ModelThrottledError` as retryable, and Gemini's 429 arrives wrapped as a plain `ModelError`.
+  - **Process lesson, recorded because it cost a day's quota twice.** Run ONE live test, not the
+    whole file: `npm run test:live -- --test-name-pattern="accepts being stopped"`. Running the
+    full suite to answer a single question spends the budget that answering it needed.
 
 - **Gemini free tier is 20 requests per day, per model (measured 2026-09-19).** Not per session —
   per day. One agent turn costs several requests, because each tool result goes back to the model
