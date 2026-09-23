@@ -20,16 +20,19 @@ import type { Mandate, Vouch } from "@vouch/shared";
  */
 
 let base: string;
+let mcpBase: string;
+let householdServer: Server;
 let mcp: Server;
 let merchantServer: Server;
 let store: VouchStore;
+let service: VouchService;
 
 before(async () => {
   const merchant = await startMerchantServer(0);
   merchantServer = merchant.server;
   store = VouchStore.open(":memory:");
 
-  const service = new VouchService({
+  service = new VouchService({
     store,
     merchant: new HttpMerchantClient(merchant.url),
     reasoning: new RuleBasedReasoningProvider(),
@@ -38,7 +41,13 @@ before(async () => {
 
   const started = await startVouchHttpServer(0, { service });
   mcp = started.server;
-  base = started.url;
+  // The household surface has its own loopback-only listener now, so this is
+  // deliberately NOT started.url. If it were, tunnelling /mcp for the Alexa+
+  // bridge would have published approve-purchase and edit-mandate to anyone
+  // holding the URL.
+  base = started.householdUrl;
+  mcpBase = started.url;
+  householdServer = started.householdServer;
 
   service.createMandate({
     mandate_id: "m_detergent",
@@ -52,8 +61,29 @@ before(async () => {
 
 after(() => {
   mcp.close();
+  householdServer.close();
   merchantServer.close();
   store.close();
+});
+
+describe("the household surface is not reachable from the MCP port", () => {
+  it("404s household routes on the port that gets tunnelled", async () => {
+    /*
+     * The whole reason for the split. /mcp has to be publicly reachable for
+     * the Alexa+ bridge; approve-purchase and edit-mandate must not be. This
+     * asserts the separation structurally — if someone ever re-mounts the
+     * household handler on the MCP listener to save a port, this fails.
+     */
+    for (const path of ["/household/state", "/household/mandates/m_detergent"]) {
+      const response = await fetch(`${mcpBase}${path}`);
+      assert.equal(response.status, 404, `${path} must not be served by the MCP listener`);
+    }
+  });
+
+  it("serves them on the loopback-only port", async () => {
+    const response = await fetch(`${base}/household/state`);
+    assert.equal(response.status, 200);
+  });
 });
 
 async function household<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -71,15 +101,32 @@ describe("editing a mandate — the thing the console could not do", () => {
     const before = await household<{ mandates: Mandate[] }>("state");
     assert.equal(before.mandates[0]?.constraints.max_price, 15);
 
+    // Only the price rule, so this test isolates the limit it is about.
+    // Leaving `new_brand` in place would have held the purchase for a reason
+    // unrelated to max_price — constraints are REPLACED on PATCH, so dropping
+    // fallback_brand silently made Brand C unfamiliar. Correct gate
+    // behaviour, wrong thing to be measuring here.
     await household<Mandate>("mandates/m_detergent", {
       method: "PATCH",
-      body: JSON.stringify({ constraints: { max_price: 30, preferred_brand: "Brand A" } }),
+      body: JSON.stringify({
+        constraints: { max_price: 30, preferred_brand: "Brand A" },
+        requires_approval_if: ["price > max_price"],
+      }),
     });
 
-    // The point of the edit: a purchase that was out of bounds now is not.
-    // Brand C is $27.80 — refused at $15, allowed at $30.
-    const response = await fetch(`${base}/health`);
-    assert.equal(response.status, 200);
+    // The point of the edit is that the GATE honours it, not that the record
+    // shows a new number. Brand C is $27.80: refused at $15, allowed at $30.
+    // (This used to fetch /health and assert 200, which proved nothing about
+    // the limit at all and only broke when /health moved to the other port.)
+    const purchase = await service.proposePurchase({
+      mandate_id: "m_detergent",
+      product_id: "detergent-brand-c",
+      quantity: 1,
+      brand: "Brand C",
+      confidence: 0.95,
+      reason: ["within_raised_limit"],
+    });
+    assert.equal(purchase.outcome, "completed", "the raised limit must reach the gate, not just the record");
 
     const after = await household<{ mandates: Mandate[] }>("state");
     assert.equal(after.mandates[0]?.constraints.max_price, 30);

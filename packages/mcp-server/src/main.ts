@@ -71,9 +71,44 @@ const service = new VouchService({
   physicalEvidence,
 });
 
-const { url } = await startVouchHttpServer(port, { service });
+/*
+ * Exposure settings. Loopback by default; the Alexa+ bridge needs 0.0.0.0
+ * behind a tunnel, and that is precisely when the host allow-list stops being
+ * optional — without it, a public MCP endpoint answers to any Host header and
+ * is reachable by DNS rebinding from a browser on the operator's network.
+ */
+const host = process.env.MCP_HOST ?? "127.0.0.1";
+const allowedHosts = (process.env.MCP_ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
 
-console.log(`[mcp-server] Streamable HTTP  ${url}/mcp`);
+if (host !== "127.0.0.1" && allowedHosts.length === 0) {
+  console.error(
+    `[mcp-server] MCP_HOST=${host} exposes this server beyond loopback, but MCP_ALLOWED_HOSTS is empty.\n` +
+      `            Set it to the hostname you are serving, e.g.\n` +
+      `            MCP_ALLOWED_HOSTS=your-tunnel.trycloudflare.com\n` +
+      `            Refusing to start: an unrestricted public MCP endpoint is not something to do by accident.`
+  );
+  process.exit(1);
+}
+
+const { url, householdUrl } = await startVouchHttpServer(port, {
+  service,
+  host,
+  allowedHosts,
+  allowedOrigins: (process.env.MCP_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean),
+  householdPort: Number(process.env.HOUSEHOLD_PORT ?? 4021),
+});
+
+console.log(`[mcp-server] Streamable HTTP  ${url}/mcp   (bound ${host})`);
+console.log(`[mcp-server] household        ${householdUrl}/household   (loopback only, never tunnel this)`);
+if (allowedHosts.length > 0) {
+  console.log(`[mcp-server] allowed hosts    ${allowedHosts.join(", ")}  (DNS-rebinding protection on)`);
+}
 console.log(`[mcp-server] merchant         ${merchantUrl}`);
 console.log(`[mcp-server] database         ${dbPath}`);
 console.log(`[mcp-server] reasoning        RuleBasedReasoningProvider (no model call)`);

@@ -22,6 +22,7 @@ import { connectVouchToolset, diffToolNames, EXPECTED_VOUCH_TOOLS } from "@vouch
 
 let toolset: Awaited<ReturnType<typeof connectVouchToolset>>;
 let mcp: Server;
+let household: Server;
 let merchantServer: Server;
 let store: VouchStore;
 
@@ -39,12 +40,15 @@ before(async () => {
 
   const started = await startVouchHttpServer(0, { service });
   mcp = started.server;
+  household = started.householdServer;
 
   toolset = await connectVouchToolset({ url: `${started.url}/mcp` });
 });
 
 after(async () => {
   await toolset.disconnect();
+  // Second listener: leaving it open keeps the event loop alive.
+  household.close();
   mcp.close();
   merchantServer.close();
   store.close();

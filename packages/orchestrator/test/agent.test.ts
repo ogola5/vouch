@@ -76,6 +76,7 @@ describe("the system prompt keeps its non-negotiables", () => {
 describe("the agent, live against Gemini", () => {
   let vouch: VouchAgent;
   let mcp: Server;
+  let household: Server;
   let merchantServer: Server;
   let store: VouchStore;
 
@@ -93,6 +94,7 @@ describe("the agent, live against Gemini", () => {
     });
     const started = await startVouchHttpServer(0, { service });
     mcp = started.server;
+    household = started.householdServer;
 
     vouch = await createVouchAgent({
       url: `${started.url}/mcp`,
@@ -104,6 +106,7 @@ describe("the agent, live against Gemini", () => {
   after(async () => {
     if (!LIVE) return;
     await vouch.disconnect();
+    household.close();
     mcp.close();
     merchantServer.close();
     store.close();

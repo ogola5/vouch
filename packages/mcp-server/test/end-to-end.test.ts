@@ -30,6 +30,7 @@ interface Rig {
   client: Client;
   merchantServer: Server;
   mcpServer: Server;
+  householdServer: Server;
   store: VouchStore;
   merchantUrl: string;
   ring: MockRingProvider;
@@ -74,6 +75,7 @@ before(async () => {
     client,
     merchantServer: merchant.server,
     mcpServer: mcp.server,
+    householdServer: mcp.householdServer,
     store,
     merchantUrl: merchant.url,
     ring,
@@ -83,6 +85,7 @@ before(async () => {
 after(async () => {
   await rig.client.close();
   rig.mcpServer.close();
+  rig.householdServer.close();
   rig.merchantServer.close();
   rig.store.close();
 });

@@ -26,6 +26,7 @@ import { startWebApp } from "@vouch/web-app";
 // cannot drift behind what the function actually returns.
 let web: Awaited<ReturnType<typeof startWebApp>>;
 let mcp: Server;
+let household: Server;
 let merchantServer: Server;
 let store: VouchStore;
 
@@ -43,8 +44,13 @@ before(async () => {
 
   const mcpStarted = await startVouchHttpServer(0, { service });
   mcp = mcpStarted.server;
+  household = mcpStarted.householdServer;
 
-  web = await startWebApp(0, { mcpUrl: `${mcpStarted.url}/mcp`, merchantUrl: merchant.url });
+  web = await startWebApp(0, {
+    mcpUrl: `${mcpStarted.url}/mcp`,
+    merchantUrl: merchant.url,
+    householdUrl: mcpStarted.householdUrl,
+  });
 });
 
 after(async () => {
@@ -53,6 +59,7 @@ after(async () => {
   // exits, which in CI reads as a hang rather than as a leak. Close it first.
   await web.bridge.close();
   web.server.close();
+  household.close();
   mcp.close();
   merchantServer.close();
   store.close();

@@ -23,6 +23,21 @@ export interface McpServerOptions {
   service: VouchService;
   /** Overridable for tests that want to assert on the advertised metadata. */
   serverInfo?: { name: string; version: string };
+  /**
+   * Host header values this server will answer to. Required once the server
+   * is reachable from anywhere but localhost — see `createVouchHttpServer`.
+   */
+  allowedHosts?: string[];
+  /** Origins permitted to call it from a browser. */
+  allowedOrigins?: string[];
+  /**
+   * Keep-alive ping interval for the SSE stream, in ms.
+   *
+   * Tunnels and load balancers close idle connections, typically well inside
+   * a minute. Without a ping, a long tool call can lose its stream mid-answer
+   * and present as the agent silently giving up.
+   */
+  keepAliveMs?: number;
 }
 
 export function buildMcpServer(options: McpServerOptions): McpServer {
@@ -78,20 +93,39 @@ export function createVouchHttpServer(options: McpServerOptions): Server {
       return;
     }
 
-    // The household's surface, which holds the powers the agent must not
-    // have (approve a held purchase, edit a mandate's limits). See
-    // household.ts for why it is a separate surface rather than a flag.
-    if (await handleHouseholdRequest(req, res, options.service, url.pathname)) {
-      return;
-    }
-
+    /*
+     * NO HOUSEHOLD ROUTES HERE. They used to be served by this listener, and
+     * moving them out is the point.
+     *
+     * This server has to be publicly reachable for the Alexa+ bridge — a
+     * tunnel in front of /mcp. The household surface can approve held
+     * purchases and raise mandate limits, and it has no authentication. On
+     * the same listener, tunnelling /mcp would have published the household's
+     * authority to the internet, where anyone with the URL could approve the
+     * purchases the gate had just refused.
+     *
+     * It now lives on its own listener, bound to loopback, in
+     * createHouseholdHttpServer below. Structural rather than a check: a port
+     * that never leaves the machine cannot be forwarded by accident, whereas
+     * a path filter is one refactor away from being wrong.
+     */
     if (url.pathname !== "/mcp") {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: `No route for ${req.method} ${url.pathname}` }));
       return;
     }
 
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      // DNS rebinding protection is only meaningful with a host list, and a
+      // host list is only knowable by the operator, so both are opt-in
+      // together. Localhost development passes neither and is unaffected.
+      ...(options.allowedHosts?.length
+        ? { allowedHosts: options.allowedHosts, enableDnsRebindingProtection: true }
+        : {}),
+      ...(options.allowedOrigins?.length ? { allowedOrigins: options.allowedOrigins } : {}),
+      keepAliveMs: options.keepAliveMs ?? 25_000,
+    });
     const server = buildMcpServer(options);
 
     // Both are per-request in stateless mode, so they have to be released
@@ -107,16 +141,71 @@ export function createVouchHttpServer(options: McpServerOptions): Server {
   }
 }
 
+/**
+ * The household's surface, on its own listener.
+ *
+ * Separate from the MCP server so it can be bound to loopback while /mcp is
+ * exposed through a tunnel. The powers here — approving a held purchase,
+ * raising a mandate's limits — are the ones the agent is deliberately denied,
+ * and there is no authentication on them yet. Keeping them on a port that
+ * never leaves the machine is what makes that acceptable; see household.ts.
+ */
+export function createHouseholdHttpServer(service: VouchService): Server {
+  return createServer((req, res) => {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    void handleHouseholdRequest(req, res, service, url.pathname)
+      .then((handled) => {
+        if (!handled && !res.headersSent) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `No household route for ${req.method} ${url.pathname}` }));
+        }
+      })
+      .catch(() => {
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "internal_error" }));
+        }
+      });
+  });
+}
+
+export interface StartOptions extends McpServerOptions {
+  /**
+   * Interface the MCP server binds to. Loopback by default; a tunnel or
+   * container needs 0.0.0.0, and that is the moment allowedHosts starts
+   * mattering.
+   */
+  host?: string;
+  /** Port for the loopback-only household surface. */
+  householdPort?: number;
+}
+
 export function startVouchHttpServer(
   port = 0,
-  options: McpServerOptions
-): Promise<{ server: Server; url: string }> {
+  options: StartOptions
+): Promise<{ server: Server; householdServer: Server; url: string; householdUrl: string }> {
   const server = createVouchHttpServer(options);
+  const householdServer = createHouseholdHttpServer(options.service);
+  const host = options.host ?? "127.0.0.1";
+
   return new Promise((resolve) => {
-    server.listen(port, "127.0.0.1", () => {
+    server.listen(port, host, () => {
       const address = server.address();
       const actualPort = typeof address === "object" && address ? address.port : port;
-      resolve({ server, url: `http://127.0.0.1:${actualPort}` });
+
+      // Always loopback, whatever `host` says. Passing 0.0.0.0 to expose the
+      // MCP server must never widen this one too — that coupling is exactly
+      // the accident this split exists to prevent.
+      householdServer.listen(options.householdPort ?? 0, "127.0.0.1", () => {
+        const hh = householdServer.address();
+        const householdPort = typeof hh === "object" && hh ? hh.port : 0;
+        resolve({
+          server,
+          householdServer,
+          url: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${actualPort}`,
+          householdUrl: `http://127.0.0.1:${householdPort}`,
+        });
+      });
     });
   });
 }

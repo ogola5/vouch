@@ -36,6 +36,8 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
 export interface WebAppOptions {
   mcpUrl: string;
   merchantUrl: string;
+  /** The loopback-only household surface. Not derivable from mcpUrl. */
+  householdUrl: string;
 }
 
 export function createWebApp(options: WebAppOptions): {
@@ -142,7 +144,11 @@ export function createWebApp(options: WebAppOptions): {
      * they would be tools, and a tool is something a model can call.
      */
     if (path.startsWith("/api/household/")) {
-      const target = `${options.mcpUrl.replace(/\/mcp$/, "")}/household/${path.slice("/api/household/".length)}`;
+      // A DIFFERENT origin from the MCP server. The household surface is on
+      // its own loopback-only listener so that exposing /mcp through a tunnel
+      // cannot publish the powers the agent is denied. Deriving this URL from
+      // mcpUrl, as it used to, would silently re-couple them.
+      const target = `${options.householdUrl.replace(/\/$/, "")}/household/${path.slice("/api/household/".length)}`;
       const response = await fetch(target, {
         method,
         headers: { "Content-Type": "application/json" },
