@@ -388,7 +388,52 @@
     - **Bee (Wearable AI) track exists but is out of scope for Vouch** — noted for completeness, not
       a fit for a household-purchase-trust product.
 
-    ## 6. Noticed, not scoped
+    ## 5b. Scoring against the published judging criteria (2026-09-23)
+
+The four criteria are Tech Implementation, Design, Potential Impact, Quality of the Idea. An
+external scoring pass was run against them; it was useful on structure and **wrong on three
+facts**, all corrected here so the errors are not carried into the writeup.
+
+**Corrections to that pass:**
+- It credited Vouch with "a real React Native Fire TV dashboard". **There is none.** Fire TV is
+  week-5 work, unstarted, and appears only as a plan in these documents.
+- It credited Vouch with a quantified chargeback case — "$128 fully-loaded cost, 43.8% friendly
+  fraud, 1% ODR threshold" — and rated Potential Impact the strongest band because of it. **Those
+  numbers appear nowhere in this repository.** They are not in the brief, not in the README, not
+  in the code. Rating a band on a case that has never been made is exactly the failure the
+  guardrails in §4 exist to prevent, and it would have been carried into the submission as though
+  it were ours.
+- It treated "confirm whether spendlatch does adaptive tightening" and "run an empirical
+  validation trial" as outstanding. **Both are done** — see §7 and `packages/eval`.
+
+**The premise worth disputing: "the primary technology for the Alexa+ track is Alexa+, and Vouch
+doesn't touch it."** The track's own words, from the official Devpost update, are *"build an Agent
+Skill **or a self hosted MCP server** on the open MCP standard"*. A self-hosted MCP server is the
+named target technology, not a substitute for it, and `packages/mcp-server` is exactly that —
+spec-compliant Streamable HTTP, with a UCP merchant implemented on both sides. The Tech
+Implementation band is therefore not structurally capped the way that pass assumed.
+
+**What IS genuinely missing on Tech Implementation:** no Agent Skill, no Bedrock, and the server
+has never been driven by anything Alexa-shaped.
+
+**`KayLerch/alexa-skill-mcp-bridge` is a route to closing that** (verified 2026-09-23). It runs an
+arbitrary self-hosted MCP server behind an Alexa Skill, with a Strands agent on Bedrock AgentCore
+standing in for the Alexa+ orchestrator. Requirements we already meet: Node 22.18+, Streamable
+HTTP 2025-11-25+, a public URL (cloudflared, proven), an Amazon developer account, ASK CLI.
+Requirements we do not: **AWS credentials with Bedrock access and Nova 2 Lite enabled**, plus
+Docker and CDK for the cloud track. Its device track additionally wants a physical Alexa+ device
+on the same account, which the marketplace finding in §7 rules out — but the cloud track does not.
+One unverified prerequisite: it requires MCP **elicitation** support, which `packages/mcp-server`
+does not currently implement.
+
+**The single highest-leverage unblock in the project is therefore the AWS credit.** It is not one
+item on a list; it moves three criteria at once: Bedrock for the AWS Builder mini-challenge, the
+removal of the Gemini rate-limit ceiling that currently caps demo rehearsal at roughly one run a
+day, and this bridge — which converts "we simulated Alexa+ in a browser" into "our MCP server was
+driven by a Strands agent on Bedrock AgentCore". Everything else on the list is worth less than
+getting that credit filed and landed.
+
+## 6. Noticed, not scoped
 
     Real improvements spotted while working, deliberately not built. Per `CLAUDE.md` §1, anything
     noticed mid-task that isn't a blocker for the current week-by-week item lands here as one line
