@@ -14,6 +14,7 @@
     "dev:web-app": "npm run dev --workspace packages/web-app",
     "dev:all": "npm run dev:mock-merchant & npm run dev:mcp-server & npm run dev:web-app",
     "check:model": "node --env-file-if-exists=.env packages/orchestrator/src/checkModel.ts",
+    "eval": "node packages/eval/src/main.ts",
     "ring:capture": "node --env-file-if-exists=.env packages/ring-integration/scripts/capture.ts",
     "demo:chat": "node --env-file-if-exists=.env packages/orchestrator/src/rehearse.ts",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",

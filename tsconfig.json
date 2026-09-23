@@ -10,6 +10,7 @@
     { "path": "./packages/mock-merchant" },
     { "path": "./packages/mcp-server" },
     { "path": "./packages/web-app" },
-    { "path": "./packages/orchestrator" }
+    { "path": "./packages/orchestrator" },
+    { "path": "./packages/eval" }
   ]
 }

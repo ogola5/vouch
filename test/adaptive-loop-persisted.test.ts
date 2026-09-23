@@ -62,7 +62,7 @@ const BORDERLINE: ProposePurchaseInput = {
   product_id: "detergent-brand-b",
   quantity: 1,
   brand: "Brand B",
-  confidence: 0.88,
+  confidence: 0.86,
   reason: ["price_drop", "fallback_brand"],
 };
 
@@ -81,7 +81,7 @@ describe("the adaptive loop, end to end", () => {
       reason: "I didn't want that brand",
     });
     assert.equal(dispute.threshold_before, 0.85);
-    assert.equal(dispute.threshold_after, 0.92);
+    assert.equal(dispute.threshold_after, 0.88);
 
     // 3. The SAME proposal — same product, same price, same confidence — is
     //    now held. Nothing about the purchase changed; the agent's authority
@@ -101,7 +101,7 @@ describe("the adaptive loop, end to end", () => {
     const dispute = await service.recordDispute({ vouch_id: first.vouch.vouch_id });
 
     assert.match(dispute.rationale, /more conservative/i);
-    assert.match(dispute.rationale, /0\.85 -> 0\.92/);
+    assert.match(dispute.rationale, /0\.85 -> 0\.88/);
 
     const held = await service.proposePurchase({ ...BORDERLINE });
     const explanation = await service.explainVouch(held.vouch.vouch_id);
@@ -140,7 +140,7 @@ describe("the tightened threshold survives a restart", () => {
       // A fresh process would see this: the demo has to survive the gap
       // between recording segments, so the adjustment cannot live in memory.
       const reopened = VouchStore.open(dbPath);
-      assert.equal(reopened.getMandate("m_detergent")?.confidence_threshold, 0.92);
+      assert.equal(reopened.getMandate("m_detergent")?.confidence_threshold, 0.88);
       assert.equal(reopened.getMandate("m_detergent")?.history.disputed_actions, 1);
       assert.equal(reopened.listVouches().length, 1);
       assert.equal(reopened.listDisputes("m_detergent").length, 1);

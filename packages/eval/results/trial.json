@@ -1,0 +1,39 @@
+{
+  "config": {
+    "households": 200,
+    "opportunitiesPerHousehold": 60,
+    "unwantedRate": 0.3,
+    "wantedConfidence": {
+      "mean": 0.88,
+      "sd": 0.08
+    },
+    "unwantedConfidence": {
+      "mean": 0.8,
+      "sd": 0.1
+    },
+    "startingThreshold": 0.85,
+    "seed": 20260923
+  },
+  "adaptive": {
+    "unwantedCompleted": 826,
+    "wantedHeld": 4100,
+    "wantedCompleted": 4350,
+    "unwantedHeld": 2724,
+    "totalOpportunities": 12000,
+    "meanFinalThreshold": 0.8858499999999987
+  },
+  "static": {
+    "unwantedCompleted": 1096,
+    "wantedHeld": 2980,
+    "wantedCompleted": 5470,
+    "unwantedHeld": 2454,
+    "totalOpportunities": 12000,
+    "meanFinalThreshold": 0.8499999999999969
+  },
+  "lateHarm": {
+    "adaptive": 185,
+    "static": 272,
+    "opportunities": 3000
+  },
+  "generated_at": "2026-09-23T18:54:07.117Z"
+}

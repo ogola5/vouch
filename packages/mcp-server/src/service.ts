@@ -202,6 +202,12 @@ export class VouchService {
       constraints: changes.constraints ?? mandate.constraints,
       requires_approval_if: changes.requires_approval_if ?? mandate.requires_approval_if,
       confidence_threshold: changes.confidence_threshold ?? mandate.confidence_threshold,
+      // Setting the threshold by hand sets a NEW floor. Only the household
+      // can move this number; the loop tightens away from it and recovers
+      // back to it, never past it. Leaving the old baseline behind would let
+      // a later good streak loosen the agent below what was just chosen.
+      baseline_confidence_threshold:
+        changes.confidence_threshold ?? mandate.baseline_confidence_threshold,
       status: changes.status ?? mandate.status,
       history: {
         ...mandate.history,

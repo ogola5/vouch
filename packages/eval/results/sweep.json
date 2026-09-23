@@ -1,0 +1,56 @@
+[
+  {
+    "label": "no adaptation (control)",
+    "disputeTightenStep": 0,
+    "streakLoosenEvery": 3,
+    "harmReduction": 0,
+    "extraWantedHeld": 0,
+    "wantedCompletionRate": 64.73372781065089,
+    "meanFinalThreshold": 0.8499999999999969
+  },
+  {
+    "label": "gentle  +0.01 / recover 2",
+    "disputeTightenStep": 0.01,
+    "streakLoosenEvery": 2,
+    "harmReduction": 6.61764705882353,
+    "extraWantedHeld": 208,
+    "wantedCompletionRate": 62.27218934911243,
+    "meanFinalThreshold": 0.8543999999999988
+  },
+  {
+    "label": "gentle  +0.02 / recover 2",
+    "disputeTightenStep": 0.02,
+    "streakLoosenEvery": 2,
+    "harmReduction": 17.647058823529413,
+    "extraWantedHeld": 573,
+    "wantedCompletionRate": 57.95266272189349,
+    "meanFinalThreshold": 0.8644999999999983
+  },
+  {
+    "label": "medium  +0.03 / recover 2",
+    "disputeTightenStep": 0.03,
+    "streakLoosenEvery": 2,
+    "harmReduction": 31.985294117647058,
+    "extraWantedHeld": 1120,
+    "wantedCompletionRate": 51.4792899408284,
+    "meanFinalThreshold": 0.8858499999999987
+  },
+  {
+    "label": "medium  +0.03 / recover 3",
+    "disputeTightenStep": 0.03,
+    "streakLoosenEvery": 3,
+    "harmReduction": 45.220588235294116,
+    "extraWantedHeld": 1439,
+    "wantedCompletionRate": 47.70414201183432,
+    "meanFinalThreshold": 0.903149999999999
+  },
+  {
+    "label": "shipped +0.07 / recover 3",
+    "disputeTightenStep": 0.07,
+    "streakLoosenEvery": 3,
+    "harmReduction": 76.83823529411765,
+    "extraWantedHeld": 2823,
+    "wantedCompletionRate": 31.325443786982248,
+    "meanFinalThreshold": 0.9571
+  }
+]

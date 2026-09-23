@@ -269,9 +269,9 @@ describe("the console cannot misreport the gate", () => {
     );
 
     assert.equal(dispute.threshold_before, 0.85);
-    assert.equal(dispute.threshold_after, 0.92);
+    assert.equal(dispute.threshold_after, 0.88);
 
     const after = await get<{ mandates: { confidence_threshold: number }[] }>("/api/state");
-    assert.equal(after.mandates[0]?.confidence_threshold, 0.92, "the page sees the new authority");
+    assert.equal(after.mandates[0]?.confidence_threshold, 0.88, "the page sees the new authority");
   });
 });

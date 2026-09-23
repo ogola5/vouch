@@ -304,9 +304,9 @@ describe("the demo script, over the wire", () => {
     );
 
     assert.equal(dispute.threshold_before, 0.85);
-    assert.equal(dispute.threshold_after, 0.92);
+    assert.equal(dispute.threshold_after, 0.88);
 
-    // A proposal that would have passed at 0.85 is now held at 0.92.
+    // A proposal that would have passed at 0.85 is now held at 0.88.
     const afterDispute = await call<{ outcome: string; vouch: { authority: { triggered_rules: string[] } } }>(
       rig.client,
       "propose_purchase",
@@ -315,7 +315,10 @@ describe("the demo script, over the wire", () => {
         product_id: "detergent-brand-a",
         quantity: 1,
         brand: "Brand A",
-        confidence: 0.88,
+        // Between the household's baseline (0.85) and the post-dispute
+        // threshold (0.88). A confidence equal to the threshold passes, so
+        // this has to sit strictly inside the gap the dispute opened.
+        confidence: 0.86,
         reason: ["restock"],
       }
     );

@@ -62,6 +62,23 @@ export const Mandate = z.object({
   requires_approval_if: z.array(z.string()),
   authority_type: AuthorityType,
   confidence_threshold: z.number().min(0).max(1),
+  /**
+   * The threshold the HOUSEHOLD set, and a floor the adaptive loop may never
+   * loosen below.
+   *
+   * Added after a 12,000-decision trial found the loop violating this
+   * project's own rule that the agent may do nothing which increases its own
+   * authority. Recovery had no floor: with few disputes, a run of undisputed
+   * purchases dragged the mean threshold from the 0.85 a household chose down
+   * to 0.669, and unwanted completions rose 178% against a static mandate.
+   * The agent was quietly granting itself more latitude than anyone had given
+   * it — through the mechanism meant to reward good behaviour.
+   *
+   * So the model is: a dispute tightens away from this number, a good streak
+   * recovers back toward it, and nothing but the household moves the number
+   * itself. See packages/eval.
+   */
+  baseline_confidence_threshold: z.number().min(0).max(1),
   status: MandateStatus.default("active"),
   history: MandateHistory,
   created_at: z.string().datetime(),
@@ -77,9 +94,12 @@ export function newMandate(
   > & { confidence_threshold?: number }
 ): Mandate {
   const now = new Date().toISOString();
+  const threshold = input.confidence_threshold ?? 0.85;
   return Mandate.parse({
     ...input,
-    confidence_threshold: input.confidence_threshold ?? 0.85,
+    confidence_threshold: threshold,
+    // The household's number starts as both the current value and the floor.
+    baseline_confidence_threshold: threshold,
     status: "active",
     history: { undisputed_actions: 0, disputed_actions: 0, last_adjusted: null },
     created_at: now,

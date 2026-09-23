@@ -95,7 +95,11 @@ describe("adaptive loop — a dispute changes the next decision", () => {
 
     assert.ok(adjustment.rationale.includes(mandate.goal), "names the mandate it changed");
     assert.ok(/0\.85/.test(adjustment.rationale), "shows the before value");
-    assert.ok(/0\.92/.test(adjustment.rationale), "shows the after value");
+    assert.ok(
+      adjustment.rationale.includes(adjustment.newThreshold.toFixed(2)),
+      "shows the after value — read from the adjustment rather than hardcoded, so " +
+        "retuning the loop on evidence does not silently break an unrelated test"
+    );
   });
 
   it("leaves a purchase that was never near the boundary unaffected", async () => {
@@ -115,11 +119,32 @@ describe("adaptive loop — a dispute changes the next decision", () => {
 });
 
 describe("adaptive loop — recovery after undisputed actions", () => {
+  /**
+   * A mandate the household set at 0.85 that a dispute has since pushed to
+   * 0.92. Recovery only has anywhere to go when the current threshold sits
+   * ABOVE the baseline, which is the state these tests need.
+   */
+  function tightenedMandate(): Mandate {
+    return { ...detergentMandate(0.85), confidence_threshold: 0.92 };
+  }
+
+  // Explicit tuning rather than the shipped default. These tests are about
+  // the SHAPE of the mechanism — partial streaks do nothing, full ones
+  // loosen, recovery is slower than tightening — and pinning them to whatever
+  // the default happens to be today made nine tests fail the moment the
+  // default was changed on evidence. The default's value is a product
+  // decision measured in packages/eval, not a fact about the algorithm.
+  const tuned = new RuleBasedReasoningProvider({
+    disputeTightenStep: 0.08,
+    streakLoosenStep: 0.02,
+    streakLoosenEvery: 3,
+  });
+
   it("does not loosen until a full streak is reached", async () => {
-    const mandate = detergentMandate(0.92);
+    const mandate = tightenedMandate();
 
     for (const streakLength of [1, 2]) {
-      const adjustment = await provider.adjustConfidenceThreshold({
+      const adjustment = await tuned.adjustConfidenceThreshold({
         mandate,
         event: { kind: "undisputed_streak", streakLength },
       });
@@ -128,10 +153,8 @@ describe("adaptive loop — recovery after undisputed actions", () => {
   });
 
   it("loosens on a completed streak", async () => {
-    const mandate = detergentMandate(0.92);
-
-    const adjustment = await provider.adjustConfidenceThreshold({
-      mandate,
+    const adjustment = await tuned.adjustConfidenceThreshold({
+      mandate: tightenedMandate(),
       event: { kind: "undisputed_streak", streakLength: 3 },
     });
 
@@ -144,7 +167,7 @@ describe("adaptive loop — recovery after undisputed actions", () => {
 
     const disputed = applyAdjustment(
       start,
-      await provider.adjustConfidenceThreshold({ mandate: start, event: { kind: "dispute" } })
+      await tuned.adjustConfidenceThreshold({ mandate: start, event: { kind: "dispute" } })
     );
 
     let recovering = disputed;
@@ -153,23 +176,17 @@ describe("adaptive loop — recovery after undisputed actions", () => {
       streaks += 1;
       recovering = applyAdjustment(
         recovering,
-        await provider.adjustConfidenceThreshold({
+        await tuned.adjustConfidenceThreshold({
           mandate: recovering,
           event: { kind: "undisputed_streak", streakLength: 3 },
         })
       );
     }
 
-    assert.equal(
-      streaks,
-      4,
-      "one dispute (+0.07) takes four undisputed streaks (-0.02 each) to undo"
-    );
-    assert.equal(
-      evaluateProposal(recovering, borderlineProposal()).withinBounds,
-      true,
-      "and once recovered, the borderline purchase is allowed again"
-    );
+    // The asymmetry itself is the claim, not the exact count: one complaint
+    // must cost several good runs to undo.
+    assert.ok(streaks >= 4, `recovery should take several streaks, took ${streaks}`);
+    assert.ok(streaks < 20, "but it must actually recover, not ratchet forever");
   });
 });
 
@@ -191,24 +208,58 @@ describe("adaptive loop — the threshold stays in a usable range", () => {
     );
   });
 
-  it("never loosens past the floor, however long the good streak", async () => {
-    let mandate = detergentMandate();
+  it("never loosens below the threshold the household actually set", async () => {
+    /*
+     * The strongest guarantee in the loop, and it was missing until a
+     * 12,000-decision trial found it (packages/eval). Recovery used to have
+     * no floor but the hard minimum of 0.5, so a long run of good purchases
+     * dragged a household's chosen 0.85 down to 0.669 — the agent widening
+     * its own authority through the mechanism meant to reward it, which
+     * breaks the rule that nothing an agent does may increase what it is
+     * allowed to do.
+     *
+     * Now recovery returns toward the household's number and stops dead.
+     */
+    let mandate = detergentMandate(0.85);
+    assert.equal(mandate.baseline_confidence_threshold, 0.85);
 
     for (let i = 0; i < 40; i += 1) {
       mandate = applyAdjustment(
         mandate,
         await provider.adjustConfidenceThreshold({
           mandate,
-          event: { kind: "undisputed_streak", streakLength: 3 },
+          event: { kind: "undisputed_streak", streakLength: 2 },
         })
       );
     }
 
-    assert.equal(mandate.confidence_threshold, 0.5);
     assert.equal(
-      evaluateProposal(mandate, borderlineProposal({ confidence: 0.49 })).withinBounds,
-      false,
-      "even at the floor the threshold still gates something — it never becomes a no-op"
+      mandate.confidence_threshold,
+      0.85,
+      "forty good streaks must not buy the agent one point of extra latitude"
     );
+  });
+
+  it("returns exactly to the household's number after a dispute is worked off", async () => {
+    const start = detergentMandate(0.85);
+    let mandate = applyAdjustment(
+      start,
+      await provider.adjustConfidenceThreshold({ mandate: start, event: { kind: "dispute" } })
+    );
+    assert.ok(mandate.confidence_threshold > 0.85, "a dispute tightens");
+
+    for (let i = 0; i < 40; i += 1) {
+      mandate = applyAdjustment(
+        mandate,
+        await provider.adjustConfidenceThreshold({
+          mandate,
+          event: { kind: "undisputed_streak", streakLength: 2 },
+        })
+      );
+    }
+
+    // Back to where the household put it, and no further. Recovery is
+    // forgiveness, not a bonus.
+    assert.equal(mandate.confidence_threshold, 0.85);
   });
 });
