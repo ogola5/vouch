@@ -51,6 +51,27 @@ function seedProducts(): CatalogProduct[] {
       price: toMinorUnits(27.8, "USD"),
       currency: "USD",
     },
+    // The rest of the demo household's consumables (packages/household,
+    // DEMO_SETUP): a preferred and a fallback product each. Fictional brands,
+    // so a search for one item cannot match another's.
+    ...[
+      ["dish-soap-clearwave", "Clearwave Dish Soap, 24 oz", "Clearwave", 3.99],
+      ["dish-soap-brightly", "Brightly Dish Soap, 22 oz", "Brightly", 3.49],
+      ["paper-towels-sheetwise", "Sheetwise Paper Towels, 6 rolls", "Sheetwise", 11.99],
+      ["paper-towels-rollgood", "Rollgood Paper Towels, 6 rolls", "Rollgood", 10.99],
+      ["toilet-paper-cloudsoft", "Cloudsoft Toilet Paper, 12 rolls", "Cloudsoft", 13.99],
+      ["toilet-paper-everyroll", "Everyroll Toilet Paper, 12 rolls", "Everyroll", 12.49],
+      ["dog-food-trailhound", "Trailhound Dog Food, 30 lb", "Trailhound", 44.99],
+      ["dog-food-barkley", "Barkley Dog Food, 30 lb", "Barkley", 39.99],
+      ["coffee-morning-ridge", "Morning Ridge Coffee, 12 oz", "Morning Ridge", 9.99],
+      ["coffee-highland-roast", "Highland Roast Coffee, 12 oz", "Highland Roast", 8.99],
+    ].map(([id, title, brand, price]) => ({
+      id: id as string,
+      title: title as string,
+      brand: brand as string,
+      price: toMinorUnits(price as number, "USD"),
+      currency: "USD",
+    })),
   ];
 }
 

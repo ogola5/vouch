@@ -8,6 +8,7 @@ import {
 } from "@vouch/ring-integration";
 import { HttpMerchantClient } from "./merchantClient.ts";
 import { VouchService } from "./service.ts";
+import { HouseholdAgent } from "./householdAgent.ts";
 import { startVouchHttpServer } from "./server.ts";
 
 /**
@@ -71,6 +72,10 @@ const service = new VouchService({
   physicalEvidence,
 });
 
+// The household model. It proposes through `service` like any other client
+// and subscribes to completed purchases so the ledger learns from all of them.
+const householdAgent = new HouseholdAgent({ store, service });
+
 /*
  * Exposure settings. Loopback by default; the Alexa+ bridge needs 0.0.0.0
  * behind a tunnel, and that is precisely when the host allow-list stops being
@@ -102,6 +107,7 @@ const { url, householdUrl } = await startVouchHttpServer(port, {
     .map((o) => o.trim())
     .filter(Boolean),
   householdPort: Number(process.env.HOUSEHOLD_PORT ?? 4021),
+  householdAgent,
 });
 
 console.log(`[mcp-server] Streamable HTTP  ${url}/mcp   (bound ${host})`);

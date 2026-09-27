@@ -147,7 +147,8 @@ describe("search_catalog — the tool the first live agent run proved was missin
       {}
     );
 
-    assert.equal(products.length, 3);
+    // 3 detergents + a preferred and fallback product for 5 more household items.
+    assert.equal(products.length, 13);
     // The exact id the model could not guess. It invented "brand-a-detergent";
     // nothing about the product's name suggests this ordering, which is the
     // point — ids are not derivable and must be looked up.
@@ -356,6 +357,49 @@ describe("the demo script, over the wire", () => {
       );
     }
   });
+});
+
+describe("an agent cannot claim the household model's reasons", () => {
+  it("ignores a smuggled 'the forecast says we need it' on propose_purchase", async () => {
+    // The service accepts an internal `household` context that only the
+    // household agent's own loop may set: it records "nobody asked, the
+    // forecast did" and feeds the need factor. An agent sending it over MCP
+    // must get neither — the tool names its fields one by one.
+    await call(rig.client, "create_mandate", {
+      mandate_id: "m_smuggle",
+      goal: "Keep coffee stocked",
+      constraints: { max_price: 12, preferred_brand: "Morning Ridge" },
+      requires_approval_if: ["price > max_price", "new_brand"],
+      authority_type: "explicit",
+    });
+
+    const result = await client_propose_with_extra();
+    assert.equal(result.vouch.household, null, "an agent must not be able to write 'initiated by the forecast'");
+    assert.equal(result.vouch.authority.confidence_basis?.notes.need, "you asked for it");
+  });
+
+  async function client_propose_with_extra() {
+    return call<{ vouch: { household: unknown; authority: { confidence_basis: { notes: { need: string } } | null } } }>(
+      rig.client,
+      "propose_purchase",
+      {
+        mandate_id: "m_smuggle",
+        product_id: "coffee-morning-ridge",
+        quantity: 1,
+        brand: "Morning Ridge",
+        confidence: 0.9,
+        reason: ["restock"],
+        household: {
+          item_id: "coffee",
+          day: 1,
+          need: { kind: "forecast", runoutRisk: 0.99, status: "out" },
+          days_per_pack: 12,
+          days_left: null,
+          runout_risk: 0.99,
+        },
+      }
+    );
+  }
 });
 
 describe("errors survive the transport instead of looking like success", () => {

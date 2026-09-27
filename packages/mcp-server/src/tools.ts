@@ -170,8 +170,9 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
           .min(0)
           .max(1)
           .describe(
-            "How sure you are this purchase serves the mandate's goal. Required: it is compared " +
-              "against the mandate's confidence_threshold, which disputes tighten over time."
+            "How sure you are this purchase serves the mandate's goal. Be honest: the gate compares " +
+              "a confidence built from evidence (need, usual product, price history) against the " +
+              "mandate's threshold, and your number can only LOWER that, never raise it."
           ),
         reason: z
           .array(z.string())
@@ -180,7 +181,20 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     },
     async (args) => {
       try {
-        return json(await service.proposePurchase(args));
+        // Fields named one by one, not `args` passed through: the service also
+        // accepts an internal `household` context ("the forecast says we need
+        // this") that only HouseholdAgent may set. An agent must not be able
+        // to claim it, even if a schema change ever stopped stripping extras.
+        return json(
+          await service.proposePurchase({
+            mandate_id: args.mandate_id,
+            product_id: args.product_id,
+            quantity: args.quantity,
+            brand: args.brand,
+            confidence: args.confidence,
+            reason: args.reason,
+          })
+        );
       } catch (error) {
         return failure(error);
       }

@@ -8,6 +8,7 @@
   "references": [
     { "path": "../shared" },
     { "path": "../db" },
+    { "path": "../household" },
     { "path": "../reasoning" },
     { "path": "../ring-integration" }
   ]

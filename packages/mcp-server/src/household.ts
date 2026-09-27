@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VouchService } from "./service.ts";
+import type { HouseholdAgent } from "./householdAgent.ts";
 
 /**
  * The HOUSEHOLD's surface, deliberately separate from the agent's MCP tools.
@@ -30,6 +31,7 @@ export const HOUSEHOLD_PREFIX = "/household";
 
 const MANDATE_PATH = /^\/household\/mandates\/([^/]+)$/;
 const VOUCH_ACTION_PATH = /^\/household\/vouches\/([^/]+)\/(approve|dispute)$/;
+const ITEM_STATEMENT_PATH = /^\/household\/items\/([^/]+)\/statement$/;
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -59,13 +61,55 @@ export async function handleHouseholdRequest(
   req: IncomingMessage,
   res: ServerResponse,
   service: VouchService,
-  pathname: string
+  pathname: string,
+  agent?: HouseholdAgent
 ): Promise<boolean> {
   const method = req.method ?? "GET";
 
   if (!pathname.startsWith(HOUSEHOLD_PREFIX)) return false;
 
   try {
+    /*
+     * The household model. Loading a household and moving its clock are demo
+     * controls; "we're out" / "about half left" is information the household
+     * gives. None of it is on the agent's MCP surface: an agent that could
+     * fast-forward time or rewrite what is in the cupboard could manufacture
+     * its own reasons to buy.
+     */
+    if (agent && pathname.startsWith("/household/pantry") && method === "GET") {
+      send(res, 200, { today: agent.today(), set_up: agent.isSetUp(), items: agent.pantry() });
+      return true;
+    }
+    if (agent && pathname === "/household/demo/setup" && method === "POST") {
+      send(res, 200, { today: agent.today(), items: agent.setUpDemo() });
+      return true;
+    }
+    if (agent && pathname === "/household/clock/advance" && method === "POST") {
+      const body = await readJson(req);
+      const days = Number(body.days ?? 1);
+      if (!Number.isFinite(days) || days < 1) {
+        send(res, 400, { error: "days must be a positive number" });
+        return true;
+      }
+      send(res, 200, await agent.advance(days));
+      return true;
+    }
+    const statementMatch = ITEM_STATEMENT_PATH.exec(pathname);
+    if (agent && statementMatch && method === "POST") {
+      const body = await readJson(req);
+      const kind = body.kind;
+      if (kind !== "runout" && kind !== "plenty" && kind !== "level") {
+        send(res, 400, { error: 'kind must be "runout", "plenty" or "level"' });
+        return true;
+      }
+      const statement =
+        kind === "level"
+          ? { kind: "level" as const, packs: Number(body.packs) }
+          : { kind: kind === "runout" ? ("runout" as const) : ("plenty" as const) };
+      send(res, 200, agent.record(decodeURIComponent(statementMatch[1]!), statement));
+      return true;
+    }
+
     if (method === "GET" && pathname === "/household/state") {
       send(res, 200, {
         mandates: service.listMandates(),

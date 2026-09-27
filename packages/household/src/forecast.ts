@@ -20,7 +20,15 @@ import type { ItemProfile } from "./items.ts";
  */
 
 export type HouseholdEvent =
-  | { kind: "purchase"; day: number; packs: number; by: "household" | "agent" }
+  | {
+      kind: "purchase";
+      day: number;
+      packs: number;
+      by: "household" | "agent";
+      /** Which product, and at what unit price — the evidence for "your usual, at your usual price". */
+      product_id?: string;
+      price?: number;
+    }
   /** "We're out" — the most informative thing a household can say. */
   | { kind: "runout"; day: number }
   /** "We still have plenty" — it has lasted at least this long. */

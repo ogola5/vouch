@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { registerVouchTools } from "./tools.ts";
 import { handleHouseholdRequest } from "./household.ts";
 import type { VouchService } from "./service.ts";
+import type { HouseholdAgent } from "./householdAgent.ts";
 
 /**
  * Vouch's MCP server over Streamable HTTP — the transport the Alexa+ track's
@@ -150,10 +151,10 @@ export function createVouchHttpServer(options: McpServerOptions): Server {
  * and there is no authentication on them yet. Keeping them on a port that
  * never leaves the machine is what makes that acceptable; see household.ts.
  */
-export function createHouseholdHttpServer(service: VouchService): Server {
+export function createHouseholdHttpServer(service: VouchService, agent?: HouseholdAgent): Server {
   return createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    void handleHouseholdRequest(req, res, service, url.pathname)
+    void handleHouseholdRequest(req, res, service, url.pathname, agent)
       .then((handled) => {
         if (!handled && !res.headersSent) {
           res.writeHead(404, { "Content-Type": "application/json" });
@@ -178,6 +179,8 @@ export interface StartOptions extends McpServerOptions {
   host?: string;
   /** Port for the loopback-only household surface. */
   householdPort?: number;
+  /** The household model. Its controls live on the household surface, never the agent's. */
+  householdAgent?: HouseholdAgent;
 }
 
 export function startVouchHttpServer(
@@ -185,7 +188,7 @@ export function startVouchHttpServer(
   options: StartOptions
 ): Promise<{ server: Server; householdServer: Server; url: string; householdUrl: string }> {
   const server = createVouchHttpServer(options);
-  const householdServer = createHouseholdHttpServer(options.service);
+  const householdServer = createHouseholdHttpServer(options.service, options.householdAgent);
   const host = options.host ?? "127.0.0.1";
 
   return new Promise((resolve) => {

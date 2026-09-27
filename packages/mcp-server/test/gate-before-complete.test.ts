@@ -191,7 +191,10 @@ describe("a Vouch records the two numbers the gate compared", () => {
     const approved = await r.service.approvePurchase(held.vouch.vouch_id);
 
     assert.equal(approved.outcome, "completed");
-    assert.equal(approved.vouch.authority.confidence_score, 0.7);
+    // The gate compared 0.6 — the evidence for a brand never approved,
+    // below the agent's claimed 0.7 — and approval keeps both on the record.
+    assert.equal(approved.vouch.authority.confidence_score, 0.6);
+    assert.equal(approved.vouch.authority.confidence_basis?.agent_claimed, 0.7);
     assert.equal(approved.vouch.authority.threshold_applied, 0.85);
     assert.equal(approved.vouch.confidence, "medium");
     assert.ok(approved.vouch.decision.reason.includes("approved_by_household"));
@@ -258,10 +261,17 @@ describe("propose_purchase — an out-of-bounds proposal never reaches Complete"
 
     assert.equal(result.vouch.action.status, "PendingApproval");
     assert.equal(result.vouch.authority.within_bounds, false);
+    // Since 2026-09-28 the gate also compares EVIDENCE, and a brand the
+    // household never approved scores 0.6 however sure the agent claims to be
+    // (0.95 here). So the confidence rule fires too — the agent cannot talk an
+    // unfamiliar brand past the bar.
     assert.deepEqual(result.vouch.authority.triggered_rules.sort(), [
+      "below_confidence_threshold",
       "new_brand",
       "price > max_price",
     ]);
+    assert.equal(result.vouch.authority.confidence_basis?.agent_claimed, 0.95);
+    assert.equal(result.vouch.authority.confidence_basis?.evidence, 0.6);
     assert.equal(result.vouch.evidence.digital.order_id, null);
     assert.equal(result.vouch.evidence.physical.correlation_status, "not_applicable");
     assert.match(result.explanation, /stopped before buying/i);

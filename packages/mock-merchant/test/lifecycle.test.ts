@@ -21,7 +21,9 @@ describe("catalog search matches word by word", () => {
   });
 
   it("returns everything for an empty query, and nothing for a word no product has", () => {
-    assert.equal(ids("").length, 3);
+    // Three detergents plus a preferred and a fallback product for each of the
+    // five other household items (packages/household DEMO_SETUP).
+    assert.equal(ids("").length, 13);
     assert.deepEqual(ids("shampoo"), []);
   });
 });

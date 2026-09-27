@@ -104,7 +104,8 @@ describe("the console serves a page and reaches the MCP server", () => {
     );
     assert.deepEqual(state.mandates, []);
     assert.deepEqual(state.vouches, []);
-    assert.equal(state.catalog.length, 3, "the demo catalogue should be visible to the page");
+    // 3 detergents + a preferred and fallback product for 5 more household items.
+    assert.equal(state.catalog.length, 13, "the demo catalogue should be visible to the page");
   });
 });
 
@@ -188,7 +189,7 @@ describe("chat degrades without taking the console with it", () => {
   it("leaves the gate and the record fully working with no model at all", async () => {
     // The claim the lazy agent exists to protect, asserted rather than assumed.
     const state = await get<{ catalog: unknown[] }>("/api/state");
-    assert.equal(state.catalog.length, 3);
+    assert.equal(state.catalog.length, 13);
 
     const result = await tool<{ outcome: string }>("propose_purchase", {
       mandate_id: "m_detergent",

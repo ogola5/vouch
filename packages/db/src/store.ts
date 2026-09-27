@@ -306,6 +306,69 @@ export class VouchStore {
   }
 
   /* ---------------------------------------------------------------------
+   * Household ledger — stored as plain JSON; packages/mcp-server owns the
+   * shapes, so this package does not depend on packages/household.
+   * ------------------------------------------------------------------ */
+
+  appendHouseholdEvent(itemId: string, event: { day: number }): void {
+    this.db
+      .prepare(`INSERT INTO household_events (item_id, day, doc) VALUES (?, ?, ?)`)
+      .run(itemId, event.day, JSON.stringify(event));
+  }
+
+  /** In the order they were recorded, which is also the order they happened in. */
+  listHouseholdEvents(itemId: string): unknown[] {
+    const rows = this.db
+      .prepare(`SELECT doc FROM household_events WHERE item_id = ? ORDER BY day ASC, seq ASC`)
+      .all(itemId) as { doc: string }[];
+    return rows.map((r) => JSON.parse(r.doc) as unknown);
+  }
+
+  saveHouseholdItem(itemId: string, settings: object): void {
+    this.db
+      .prepare(
+        `INSERT INTO household_items (item_id, doc) VALUES (?, ?)
+         ON CONFLICT (item_id) DO UPDATE SET doc = excluded.doc`
+      )
+      .run(itemId, JSON.stringify(settings));
+  }
+
+  getHouseholdItem(itemId: string): unknown | null {
+    const row = this.db.prepare(`SELECT doc FROM household_items WHERE item_id = ?`).get(itemId) as
+      | { doc: string }
+      | undefined;
+    return row ? (JSON.parse(row.doc) as unknown) : null;
+  }
+
+  listHouseholdItemIds(): string[] {
+    const rows = this.db.prepare(`SELECT item_id FROM household_items ORDER BY item_id`).all() as { item_id: string }[];
+    return rows.map((r) => r.item_id);
+  }
+
+  getHouseholdMeta(key: string): string | null {
+    const row = this.db.prepare(`SELECT value FROM household_meta WHERE key = ?`).get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value ?? null;
+  }
+
+  setHouseholdMeta(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO household_meta (key, value) VALUES (?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      )
+      .run(key, value);
+  }
+
+  /** Forgets the household model entirely — "forget this household". Vouches and mandates are untouched. */
+  clearHousehold(): void {
+    this.transaction(() => {
+      this.db.exec(`DELETE FROM household_events; DELETE FROM household_items; DELETE FROM household_meta;`);
+    });
+  }
+
+  /* ---------------------------------------------------------------------
    * Internals
    * ------------------------------------------------------------------ */
 

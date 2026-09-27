@@ -71,4 +71,31 @@ CREATE TABLE IF NOT EXISTS disputes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_disputes_mandate ON disputes (mandate_id, disputed_at DESC);
+
+/*
+ * The household model's memory (packages/household). Append-only events per
+ * item — purchases, "we're out", "about half left" — because the forecast is
+ * recomputed from the whole history every time rather than kept as a running
+ * state that could drift from what actually happened. Days are whole numbers
+ * on the household's clock (household_meta 'today'), which the demo can
+ * advance; nothing here reads the wall clock.
+ */
+CREATE TABLE IF NOT EXISTS household_events (
+  seq      INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id  TEXT NOT NULL,
+  day      INTEGER NOT NULL,
+  doc      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_household_events_item ON household_events (item_id, day);
+
+/* Per-item settings the household chose: question mode, its own answer to "how often?". */
+CREATE TABLE IF NOT EXISTS household_items (
+  item_id  TEXT PRIMARY KEY,
+  doc      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS household_meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
 `;

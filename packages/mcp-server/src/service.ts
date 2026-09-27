@@ -12,6 +12,14 @@ import {
   type Vouch,
 } from "@vouch/shared";
 import type { VouchStore } from "@vouch/db";
+import {
+  evidenceConfidence,
+  gateConfidence,
+  type EvidenceConfidence,
+  type HouseholdEvent,
+  type NeedBasis,
+  type ProductFit,
+} from "@vouch/household";
 import type { ReasoningProvider } from "@vouch/reasoning";
 import type { PhysicalEvidenceProvider } from "@vouch/ring-integration";
 import type { MerchantClient } from "./merchantClient.ts";
@@ -58,7 +66,36 @@ export interface VouchServiceDeps {
   reasoning: ReasoningProvider;
   physicalEvidence: PhysicalEvidenceProvider;
   household?: HouseholdProfile;
+  /**
+   * Told about every completed purchase, so the household ledger learns from
+   * purchases however they were made — by the forecast, through chat, or
+   * approved by the household. Wired in main.ts to HouseholdAgent.
+   */
+  onPurchaseCompleted?: (completed: {
+    vouch: Vouch;
+    mandate: Mandate;
+    quantity: number;
+    /** The merchant's product id, from the UCP line item — not a title. */
+    productId: string | null;
+  }) => void;
 }
+
+/**
+ * Why the household model proposed a purchase. INTERNAL: tools.ts does not
+ * expose this field, so an agent cannot claim "the forecast says we need it".
+ * Only HouseholdAgent's own loop sets it.
+ */
+export interface HouseholdProposalContext {
+  item_id: string;
+  day: number;
+  need: NeedBasis;
+  days_per_pack: number;
+  days_left: { low: number; median: number; high: number } | null;
+  runout_risk: number;
+}
+
+type ConfidenceBasis = NonNullable<Vouch["authority"]["confidence_basis"]>;
+type HouseholdRecord = Vouch["household"];
 
 export interface CreateMandateInput {
   mandate_id?: string;
@@ -83,10 +120,17 @@ export interface ProposePurchaseInput {
    * see proposePurchase.
    */
   brand: string;
-  /** The agent's own confidence that this purchase serves the mandate, in [0, 1]. */
-  confidence: number;
+  /**
+   * The agent's own confidence, in [0, 1]. ADVISORY SINCE 2026-09-28: the
+   * gate compares evidence built from checkable facts, and this can only
+   * lower that number, never raise it (see gateConfidence). Absent when the
+   * household model proposes on its own.
+   */
+  confidence?: number;
   /** Why the agent picked this, e.g. ["price_drop", "preferred_brand"]. */
   reason: string[];
+  /** Internal only — see HouseholdProposalContext. */
+  household?: HouseholdProposalContext;
 }
 
 export interface ProposePurchaseResult {
@@ -108,6 +152,13 @@ function confidenceLevel(confidence: number): ConfidenceLevel {
   return "low";
 }
 
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
 /** How wide a window around the expected delivery a Ring event still corroborates. */
 const RING_CORRELATION_WINDOW_MINUTES = 120;
 
@@ -117,6 +168,7 @@ export class VouchService {
   private readonly reasoning: ReasoningProvider;
   private readonly physicalEvidence: PhysicalEvidenceProvider;
   private readonly household: HouseholdProfile;
+  private onPurchaseCompleted: VouchServiceDeps["onPurchaseCompleted"];
 
   constructor(deps: VouchServiceDeps) {
     this.store = deps.store;
@@ -124,6 +176,57 @@ export class VouchService {
     this.reasoning = deps.reasoning;
     this.physicalEvidence = deps.physicalEvidence;
     this.household = deps.household ?? DEMO_HOUSEHOLD;
+    this.onPurchaseCompleted = deps.onPurchaseCompleted;
+  }
+
+  /** Lets HouseholdAgent subscribe after both have been constructed. */
+  setPurchaseListener(listener: VouchServiceDeps["onPurchaseCompleted"]): void {
+    this.onPurchaseCompleted = listener;
+  }
+
+  /**
+   * Builds the evidence for "is this the right purchase?" from what the
+   * household has actually bought: the item ledger when the mandate names a
+   * tracked item, otherwise this mandate's completed Vouches.
+   */
+  private evidenceFor(
+    mandate: Mandate,
+    purchase: { product_id: string; title: string; brand: string; price: number },
+    need: NeedBasis
+  ): EvidenceConfidence {
+    const itemId = typeof mandate.constraints.item_id === "string" ? mandate.constraints.item_id : null;
+    const history: { product: string; price: number | null }[] = itemId
+      ? (this.store.listHouseholdEvents(itemId) as HouseholdEvent[])
+          .filter((e): e is Extract<HouseholdEvent, { kind: "purchase" }> => e.kind === "purchase" && !!e.product_id)
+          .map((e) => ({ product: e.product_id!, price: e.price ?? null }))
+      : this.store
+          .listVouches({ mandate_id: mandate.mandate_id, limit: 200 })
+          .filter((v) => v.action.status === "Complete")
+          .reverse()
+          .map((v) => ({ product: v.decision.product, price: v.decision.price }));
+    const key = itemId ? purchase.product_id : purchase.title;
+
+    const preferred = mandate.constraints.preferred_brand;
+    const fallback = mandate.constraints.fallback_brand;
+    const fit: ProductFit =
+      history.length > 0 && history[history.length - 1]!.product === key
+        ? "usual"
+        : preferred !== undefined && purchase.brand === preferred
+          ? "preferred"
+          : fallback !== undefined && purchase.brand === fallback
+            ? "fallback"
+            : preferred === undefined && fallback === undefined
+              ? "preferred" // a mandate that names no brand does not make every brand a stranger
+              : mandate.requires_approval_if.includes("new_brand")
+                ? "other"
+                : // The household removed "ask me about new brands". Evidence must
+                  // not quietly reimpose a restriction it deliberately lifted:
+                  // allowed, just not what it prefers. (Found by household.test.ts.)
+                  "fallback";
+
+    const paid = history.filter((h) => h.product === key && h.price !== null).map((h) => h.price!);
+    const typical = median(paid);
+    return evidenceConfidence({ need, product: fit, priceRatio: typical === null ? null : purchase.price / typical });
   }
 
   /* ---------------------------------------------------------------------
@@ -300,14 +403,42 @@ export class VouchService {
     }
 
     const unitPriceMajor = toMajorUnits(lineItem.item.price, session.currency);
+    const product = lineItem.item.title ?? input.product_id;
+
+    // The number the gate compares is EVIDENCE, capped by the agent's own
+    // claim if that is lower. The agent may admit doubt; it may not
+    // manufacture certainty. (BUILD_PLAN.md §7, "grades its own homework".)
+    const evidence = this.evidenceFor(
+      mandate,
+      { product_id: input.product_id, title: product, brand: input.brand, price: unitPriceMajor },
+      input.household?.need ?? { kind: "asked" }
+    );
+    const claimed = input.confidence ?? null;
+    const confidence = gateConfidence(evidence.score, claimed);
+    const basis: ConfidenceBasis = {
+      evidence: evidence.score,
+      agent_claimed: claimed,
+      factors: evidence.factors,
+      notes: evidence.notes,
+    };
+    const householdRecord: HouseholdRecord = input.household
+      ? {
+          item_id: input.household.item_id,
+          initiated_by: "forecast",
+          day: input.household.day,
+          days_per_pack: input.household.days_per_pack,
+          days_left: input.household.days_left,
+          runout_risk: input.household.runout_risk,
+        }
+      : null;
+
     const evaluation = evaluateProposal(mandate, {
       price: unitPriceMajor,
       quantity: input.quantity,
       brand: input.brand,
-      confidence: input.confidence,
+      confidence,
     });
 
-    const product = lineItem.item.title ?? input.product_id;
     const now = new Date().toISOString();
 
     // ---- The gate. Nothing below this line may call completeSession()
@@ -321,8 +452,9 @@ export class VouchService {
           mandate_id: mandate.mandate_id,
           within_bounds: false,
           triggered_rules: evaluation.triggeredRules,
-          confidence_score: input.confidence,
+          confidence_score: confidence,
           threshold_applied: mandate.confidence_threshold,
+          confidence_basis: basis,
         },
         decision: { product, price: unitPriceMajor, reason: input.reason },
         action: { ucp_session_id: session.id, status: "PendingApproval" },
@@ -338,9 +470,10 @@ export class VouchService {
             classification: null,
           },
         },
-        confidence: confidenceLevel(input.confidence),
+        confidence: confidenceLevel(confidence),
         user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
         dispute: null,
+        household: householdRecord,
       };
 
       const saved = this.store.saveVouch(vouch);
@@ -363,8 +496,10 @@ export class VouchService {
       product,
       unitPriceMajor,
       reason: input.reason,
-      confidenceScore: input.confidence,
+      confidenceScore: confidence,
       thresholdApplied: mandate.confidence_threshold,
+      confidenceBasis: basis,
+      household: householdRecord,
       evaluation,
     });
   }
@@ -407,6 +542,8 @@ export class VouchService {
       // recording it as "high" would misstate what the agent believed.
       confidenceScore: held.authority.confidence_score,
       thresholdApplied: held.authority.threshold_applied,
+      confidenceBasis: held.authority.confidence_basis,
+      household: held.household,
       confidenceBand: held.confidence,
       evaluation: {
         withinBounds: true,
@@ -553,6 +690,8 @@ export class VouchService {
     /** Null only for an approval of a record that predates these fields. */
     confidenceScore: number | null;
     thresholdApplied: number | null;
+    confidenceBasis: ConfidenceBasis | null;
+    household: HouseholdRecord;
     /** Given when approving, so the band is carried over rather than recomputed. */
     confidenceBand?: ConfidenceLevel;
     evaluation: MandateEvaluation;
@@ -594,6 +733,7 @@ export class VouchService {
         triggered_rules: evaluation.triggeredRules,
         confidence_score: args.confidenceScore,
         threshold_applied: args.thresholdApplied,
+        confidence_basis: args.confidenceBasis,
       },
       decision: { product: args.product, price: args.unitPriceMajor, reason: args.reason },
       action: { ucp_session_id: session.id, status: "Complete" },
@@ -609,9 +749,16 @@ export class VouchService {
         args.confidenceBand ?? (args.confidenceScore === null ? "low" : confidenceLevel(args.confidenceScore)),
       user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
       dispute: null,
+      household: args.household,
     };
 
     const saved = this.store.saveVouch(vouch);
+    this.onPurchaseCompleted?.({
+      vouch: saved,
+      mandate,
+      quantity: session.line_items[0]?.quantity ?? 1,
+      productId: session.line_items[0]?.item.id ?? null,
+    });
 
     /*
      * The recovery half of the adaptive loop. An undisputed purchase counts

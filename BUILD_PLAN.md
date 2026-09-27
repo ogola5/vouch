@@ -434,7 +434,17 @@ household's *own* interval, over 1,200 synthetic item-years: **21.4% fewer days 
 2. *Questions are a household setting* — off / once per pack (default) / weekly — because it is a
    real trade-off: never asking runs out least but hoards (+60.8% stock); weekly runs out 52.9%
    less at 4.1 asks a week. Also: silence is never treated as "still lasting".
-Remaining: step 3 (evidence-based confidence + autonomous proposals + fast-forward), step 4 (pantry view).
+**Step 3 DONE 2026-09-28.** Evidence-based confidence (`packages/household/src/confidence.ts`);
+the gate compares `min(evidence, agent's claim)` for every proposal, chat included — **closes the §7
+"grades its own homework" question**. `HouseholdAgent` (`packages/mcp-server/src/householdAgent.ts`)
+proposes through the same `proposePurchase` gate each simulated day; the forecast context is an
+internal input the MCP tool does not expose (a test sends it over MCP and asserts it is ignored).
+Household ledger in `packages/db`; demo household of six items with authored history; household
+routes `/household/pantry`, `/demo/setup`, `/clock/advance`, `/items/:id/statement`. Found on the
+way: evidence must not reimpose a brand restriction the household lifted (fit is "other" only while
+`new_brand` is a rule); a purchase must close an open "how much is left?" question. README honesty
+table: false "real React Native Fire TV app" row corrected.
+Remaining: step 4 (pantry view).
 
 **W2 design — AGREED WITH THE OWNER 2026-09-27.** *Numbers from arithmetic, words from the model.*
 - **Forecast is plain statistics, not AI.** Per item: days one pack lasts this household, with
@@ -800,6 +810,9 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
     Per `CLAUDE.md` §8: requirements that are genuinely unclear and whose resolution would touch a
     meaningful amount of code. Raise these rather than picking an interpretation and building on it.
 
+    - **RESOLVED 2026-09-28 (§3b W2 step 3): evidence produces it.** Need × usual product × price
+      against history, built by `packages/household/src/confidence.ts`; the agent's claim can only
+      lower it. Recorded on every Vouch as `authority.confidence_basis`. Original question kept below.
     - **What actually produces the `confidence` value on a `PurchaseProposal`? (opened 2026-09-19)**
       `evaluateProposal` compares it against the mandate's `confidence_threshold`, and the adaptive
       loop exists to move that threshold — so this number is the single most load-bearing input in

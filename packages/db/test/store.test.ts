@@ -40,6 +40,7 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
       triggered_rules: [],
       confidence_score: 0.92,
       threshold_applied: 0.85,
+      confidence_basis: null,
     },
     decision: { product: "Brand A Detergent", price: 12.49, reason: ["price_drop"] },
     action: { ucp_session_id: "sess_1", status: "Complete" },
@@ -55,6 +56,7 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     confidence: "high",
     user_controls: ["explain", "dispute"],
     dispute: null,
+    household: null,
   });
 }
 

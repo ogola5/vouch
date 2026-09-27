@@ -212,8 +212,14 @@ describe(`the agent, live against ${LIVE_MODEL ? `${LIVE_MODEL.provider} ${LIVE_
       result.toolCalls.some((c) => c.name === "search_catalog" && !c.failed),
       `expected search_catalog; got [${result.toolCalls.map((c) => c.name).join(", ")}]`
     );
-    // The exact id it hallucinated before was "brand-a-detergent".
-    assert.match(result.text, /detergent-brand-[abc]/);
+    // The failure this guards against: the first live run invented the id
+    // "brand-a-detergent". Assert that directly — and that it names the real
+    // products — rather than requiring the reply to print raw ids, which is a
+    // formatting choice (on 2026-09-28 Nova listed "Brand A … $14.99" instead,
+    // a correct and friendlier answer that the old id-regex failed).
+    assert.doesNotMatch(result.text, /brand-[abc]-detergent/i, "it invented an id");
+    assert.match(result.text, /Brand A/);
+    assert.match(result.text, /Brand C/);
   });
 
   it("turns a plain-language standing instruction into a mandate", liveOpts, async () => {

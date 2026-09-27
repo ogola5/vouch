@@ -84,6 +84,21 @@ export const Vouch = z.object({
      */
     confidence_score: z.number().min(0).max(1).nullable().default(null),
     threshold_applied: z.number().min(0).max(1).nullable().default(null),
+    /**
+     * Where confidence_score came from. The evidence is built from checkable
+     * facts (packages/household/src/confidence.ts); the agent's own claim can
+     * only lower it. Both are kept, so "the agent said 0.94, the evidence said
+     * 0.71" is readable on the record. Null on records before 2026-09-28.
+     */
+    confidence_basis: z
+      .object({
+        evidence: z.number().min(0).max(1),
+        agent_claimed: z.number().min(0).max(1).nullable(),
+        factors: z.object({ need: z.number(), product: z.number(), price: z.number() }),
+        notes: z.object({ need: z.string(), product: z.string(), price: z.string() }),
+      })
+      .nullable()
+      .default(null),
   }),
   decision: z.object({
     product: z.string(),
@@ -101,5 +116,22 @@ export const Vouch = z.object({
   confidence: ConfidenceLevel,
   user_controls: z.array(UserControl),
   dispute: Dispute.nullable().default(null),
+  /**
+   * Set when the purchase was for a tracked household item. `initiated_by`
+   * "forecast" means nobody asked: the household model proposed it, and the
+   * numbers it acted on are recorded here so the Vouch can say why in terms a
+   * household can check — "you get about 27 days from one; about 2 left".
+   */
+  household: z
+    .object({
+      item_id: z.string(),
+      initiated_by: z.enum(["forecast", "household"]),
+      day: z.number().int(),
+      days_per_pack: z.number(),
+      days_left: z.object({ low: z.number(), median: z.number(), high: z.number() }).nullable(),
+      runout_risk: z.number().min(0).max(1),
+    })
+    .nullable()
+    .default(null),
 });
 export type Vouch = z.infer<typeof Vouch>;

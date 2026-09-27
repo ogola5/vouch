@@ -12,6 +12,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
     "@vouch/db": "*",
+    "@vouch/household": "*",
     "@vouch/reasoning": "*",
     "@vouch/ring-integration": "*",
     "@vouch/shared": "*",
