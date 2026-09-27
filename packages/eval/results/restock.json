@@ -9,7 +9,11 @@
     "tellsRunoutRate": 0.7,
     "guestsPerDay": 0.022222222222222223,
     "answersQuestionRate": 0.8,
-    "levelAnswerError": 0.3
+    "levelAnswerError": 0.3,
+    "dealsPerDay": 0.03333333333333333,
+    "dealDays": 4,
+    "dealPrice": 0.8,
+    "autoBuyTarget": 0.85
   },
   "itemYears": 1200,
   "forecast": {
@@ -18,7 +22,9 @@
     "packsBought": 24654,
     "earlyArrivals": 843,
     "meanStockDays": 18.307698591127878,
-    "questionsAsked": 27029
+    "questionsAsked": 27029,
+    "spend": 24053.799999999883,
+    "boughtByHousehold": 2819
   },
   "forecastNoQuestions": {
     "stockoutDays": 1301,
@@ -26,7 +32,9 @@
     "packsBought": 31065,
     "earlyArrivals": 20665,
     "meanStockDays": 64.29450278331143,
-    "questionsAsked": 0
+    "questionsAsked": 0,
+    "spend": 30301.599999999915,
+    "boughtByHousehold": 964
   },
   "forecastWeekly": {
     "stockoutDays": 2025,
@@ -34,7 +42,9 @@
     "packsBought": 24766,
     "earlyArrivals": 945,
     "meanStockDays": 17.894550248035333,
-    "questionsAsked": 42936
+    "questionsAsked": 42936,
+    "spend": 24143.799999999905,
+    "boughtByHousehold": 1982
   },
   "calendarStated": {
     "stockoutDays": 4295,
@@ -42,7 +52,9 @@
     "packsBought": 27456,
     "earlyArrivals": 12133,
     "meanStockDays": 39.99208729258905,
-    "questionsAsked": 0
+    "questionsAsked": 0,
+    "spend": 26782.399999999896,
+    "boughtByHousehold": 2507
   },
   "calendarMonthly": {
     "stockoutDays": 16812,
@@ -50,7 +62,19 @@
     "packsBought": 24404,
     "earlyArrivals": 3471,
     "meanStockDays": 32.02429472020376,
-    "questionsAsked": 0
+    "questionsAsked": 0,
+    "spend": 23829.199999999924,
+    "boughtByHousehold": 8804
+  },
+  "autoBuy": {
+    "stockoutDays": 19464,
+    "runouts": 10389,
+    "packsBought": 23911,
+    "earlyArrivals": 5188,
+    "meanStockDays": 36.89433169723228,
+    "questionsAsked": 0,
+    "spend": 21224.000000000025,
+    "boughtByHousehold": 10028
   },
   "forecastAccuracy": {
     "meanAbsErrorDays": 7.298419776468134,

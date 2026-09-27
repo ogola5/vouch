@@ -578,6 +578,31 @@ and show the difference: purchases plain auto-buy would have made that Vouch hel
 differently. *Done when:* the panel renders from a real replay, not hard-coded numbers.
 *Reason:* answers "why aren't Amazon's existing controls enough?" with data, not argument.
 
+**W4 re-scoped 2026-09-28 (owner: "without duplicating features").** Two thirds of W4 already
+existed: `packages/eval/src/restock.ts` measures calendar restocking (Scheduled Actions) against the
+forecast, and `simulate.ts` measures learning from a dispute against not learning. The only
+missing baseline is Auto Buy itself, a price trigger. So W4 is two steps:
+- **W4-1:** an `autoBuy` policy inside the existing restock simulation.
+- **W4-2:** a console panel that renders from a real replay.
+
+**W4-1 DONE 2026-09-28.** The simulation now has a price series (deals about 1 day in 30, 4 days
+long, 20% off), drawn from its own random stream, so every previously published number is
+byte-identical and a test pins that. It also tracks the price paid and the packs ordered by hand
+after running out. Auto Buy buys when the price reaches a target 15% below usual, and the household
+re-arms it after every purchase, which is the generous reading.
+
+Result at the default: 5.8× the forecast's days out of stock and 3.6× the reorders by hand, but it
+pays 9.0% less per pack. That win is published alongside the rest.
+
+Because the deal pattern is an assumption, the README publishes the curve. With a deal every
+~60 / 30 / 14 / 7 days:
+- Auto Buy's days out of stock are 8.4× / 5.8× / 2.6× / **0.97×** the forecast's.
+- Its stock in the house is 20 / 37 / 94 / **178** days, against the forecast's 18.
+
+The claim for the writeup: *a price trigger either runs out or stockpiles; it cannot avoid both,
+because it never sees what is left.* Every figure is pinned in `packages/eval/test/claims.test.ts`.
+Not yet built: **W4-2**, the console panel.
+
 **W4b — Proof mode, trace and the security matrix (1½ days). Adopted from an external review
 2026-09-27** (numeric self-scores in that review rejected per CLAUDE.md §10; its "0.85 → 0.92" is
 stale — the step is +0.03; its "trust 92% → 99%" inverted the meaning of the threshold and is not

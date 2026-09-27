@@ -44,6 +44,14 @@ export interface RestockConfig {
   answersQuestionRate: number;
   /** How rough that answer is before it is snapped to "half", "one"… (log sd). */
   levelAnswerError: number;
+  /** Chance per day that a deal starts on an item (W4, the Auto Buy baseline). */
+  dealsPerDay: number;
+  /** How long a deal lasts, in days. */
+  dealDays: number;
+  /** Price during a deal, as a fraction of the usual price. */
+  dealPrice: number;
+  /** The target a household sets on Auto Buy, as a fraction of the usual price. */
+  autoBuyTarget: number;
 }
 
 export const DEFAULT_RESTOCK: RestockConfig = {
@@ -57,6 +65,10 @@ export const DEFAULT_RESTOCK: RestockConfig = {
   guestsPerDay: 1 / 45,
   answersQuestionRate: 0.8,
   levelAnswerError: 0.3,
+  dealsPerDay: 1 / 30,
+  dealDays: 4,
+  dealPrice: 0.8,
+  autoBuyTarget: 0.85,
 };
 
 /** What a person actually says: almost out, a quarter, half, one, two, three. */
@@ -77,6 +89,10 @@ export interface PolicyMetrics {
   meanStockDays: number;
   /** "Roughly how much is left?" questions put to the household — a cost, counted as one. */
   questionsAsked: number;
+  /** Sum of the prices paid, each as a fraction of the usual price. Divide by packsBought for the mean. */
+  spend: number;
+  /** Packs the household had to order by hand after running out — the policy's job, done by a person. */
+  boughtByHousehold: number;
 }
 
 export interface RestockResult {
@@ -91,11 +107,17 @@ export interface RestockResult {
   calendarStated: PolicyMetrics;
   /** Calendar at a flat 30 days — "every month". */
   calendarMonthly: PolicyMetrics;
+  /**
+   * Amazon's Auto Buy: buy when the price reaches the household's target,
+   * with no view of how much is left (BUILD_PLAN.md §5c, primary). Re-armed
+   * by the household after every purchase — the most generous reading.
+   */
+  autoBuy: PolicyMetrics;
   /** How right the forecast's "days left" was, on days it had stock to forecast. */
   forecastAccuracy: { meanAbsErrorDays: number; coverage80: number; daysMeasured: number };
 }
 
-type Policy = "forecast" | "forecastNoQuestions" | "forecastWeekly" | "calendarStated" | "calendarMonthly";
+type Policy = "forecast" | "forecastNoQuestions" | "forecastWeekly" | "calendarStated" | "calendarMonthly" | "autoBuy";
 
 const QUESTION_MODE: Partial<Record<Policy, QuestionMode>> = {
   forecast: "once-per-pack",
@@ -116,9 +138,26 @@ interface World {
   packDays: number[];
   guestDay: boolean[];
   calendarInterval: number;
+  /** Each day's price as a fraction of the usual: 1, or `dealPrice` during a deal. */
+  price: number[];
 }
 
-function buildWorld(config: RestockConfig, item: ItemProfile, rng: () => number): World {
+/*
+ * Prices come from their own random stream, drawn after everything else, so
+ * adding them left every number published before W4 exactly as it was
+ * (test/claims.test.ts re-derives them).
+ */
+function buildPrices(config: RestockConfig, rng: () => number): number[] {
+  const price = Array.from({ length: config.days }, () => 1);
+  for (let day = 0; day < config.days; day++) {
+    if (rng() < config.dealsPerDay) {
+      for (let d = day; d < Math.min(config.days, day + config.dealDays); d++) price[d] = config.dealPrice;
+    }
+  }
+  return price;
+}
+
+function buildWorld(config: RestockConfig, item: ItemProfile, rng: () => number, priceRng: () => number): World {
   const truePace = item.defaultDaysPerPack * Math.exp(normal(rng) * config.householdPaceSpread);
   const answered = truePace * Math.exp(normal(rng) * config.answerError);
   const packDays = Array.from({ length: 400 }, () => truePace * Math.exp(normal(rng) * config.packNoise));
@@ -132,6 +171,7 @@ function buildWorld(config: RestockConfig, item: ItemProfile, rng: () => number)
     packDays,
     guestDay,
     calendarInterval: Math.max(1, Math.round(answered)),
+    price: buildPrices(config, priceRng),
   };
 }
 
@@ -162,6 +202,8 @@ function runPolicy(
     arrivals.set(arrival, (arrivals.get(arrival) ?? 0) + 1);
     events.push({ kind: "purchase", day: arrival, packs: 1, by });
     metrics.packsBought++;
+    metrics.spend += world.price[today]!;
+    if (by === "household") metrics.boughtByHousehold++;
   };
   const onTheWay = (today: number) => [...arrivals.keys()].some((d) => d > today);
 
@@ -169,6 +211,7 @@ function runPolicy(
   stock = world.packDays[nextPack++]!;
   events.push({ kind: "purchase", day: 0, packs: 1, by: "household" });
   metrics.packsBought++;
+  metrics.spend += world.price[0]!;
   let manualReorderOn: number | null = null;
 
   for (let day = 1; day < config.days; day++) {
@@ -213,6 +256,11 @@ function runPolicy(
           events.push({ kind: "level", day, packs: said });
         }
       }
+    } else if (policy === "autoBuy") {
+      // Fires once when a deal brings the price to the target, then the
+      // household re-arms it. It never sees how much is left.
+      const hit = (d: number) => world.price[d]! <= config.autoBuyTarget;
+      if (hit(day) && !hit(day - 1)) order(day, "agent");
     } else {
       const interval = policy === "calendarStated" ? world.calendarInterval : 30;
       if (day % interval === 0) order(day, "agent");
@@ -232,11 +280,19 @@ function add(into: PolicyMetrics, from: PolicyMetrics): void {
   into.earlyArrivals += from.earlyArrivals;
   into.meanStockDays += from.meanStockDays;
   into.questionsAsked += from.questionsAsked;
+  into.spend += from.spend;
+  into.boughtByHousehold += from.boughtByHousehold;
 }
 
 function empty(): PolicyMetrics {
-  return { stockoutDays: 0, runouts: 0, packsBought: 0, earlyArrivals: 0, meanStockDays: 0, questionsAsked: 0 };
+  return {
+    stockoutDays: 0, runouts: 0, packsBought: 0, earlyArrivals: 0, meanStockDays: 0, questionsAsked: 0,
+    spend: 0, boughtByHousehold: 0,
+  };
 }
+
+/** Mean price paid per pack, as a fraction of the usual price. */
+export const meanPricePaid = (m: PolicyMetrics) => m.spend / m.packsBought;
 
 /** Percent change from `base` to `value`; negative means fewer. */
 const change = (value: number, base: number) => ((value - base) / base) * 100;
@@ -259,7 +315,39 @@ export function restockSummary(r: RestockResult) {
     forecastNoQuestions: vs(r.forecastNoQuestions),
     forecastWeekly: vs(r.forecastWeekly),
     calendarMonthly: vs(r.calendarMonthly),
+    /** W4: Amazon's Auto Buy against the default forecast — including where Auto Buy wins. */
+    autoBuyVsForecast: {
+      stockoutDaysTimes: r.autoBuy.stockoutDays / r.forecast.stockoutDays,
+      boughtByHousehold: { autoBuy: r.autoBuy.boughtByHousehold, forecast: r.forecast.boughtByHousehold },
+      pricePaidChange: change(meanPricePaid(r.autoBuy), meanPricePaid(r.forecast)),
+      earlyArrivals: { autoBuy: r.autoBuy.earlyArrivals, forecast: r.forecast.earlyArrivals },
+    },
   };
+}
+
+export interface AutoBuySweepRow {
+  dealEveryDays: number;
+  autoBuy: { stockoutDays: number; meanStockDays: number; meanPricePaid: number; boughtByHousehold: number };
+  forecast: { stockoutDays: number; meanStockDays: number; meanPricePaid: number; boughtByHousehold: number };
+}
+
+/**
+ * Auto Buy's result depends on how often prices drop, which is an assumption,
+ * so it is published as a curve rather than one number. The expected shape:
+ * rare deals, and a price trigger runs out; frequent deals, and it
+ * stockpiles. It cannot do both well because it never sees what is left.
+ */
+export function runAutoBuySweep(config: RestockConfig = DEFAULT_RESTOCK): AutoBuySweepRow[] {
+  const pick = (m: PolicyMetrics) => ({
+    stockoutDays: m.stockoutDays,
+    meanStockDays: m.meanStockDays,
+    meanPricePaid: meanPricePaid(m),
+    boughtByHousehold: m.boughtByHousehold,
+  });
+  return [60, 30, 14, 7].map((dealEveryDays) => {
+    const r = runRestockTrial({ ...config, dealsPerDay: 1 / dealEveryDays });
+    return { dealEveryDays, autoBuy: pick(r.autoBuy), forecast: pick(r.forecast) };
+  });
 }
 
 export function runRestockTrial(config: RestockConfig = DEFAULT_RESTOCK): RestockResult {
@@ -269,6 +357,7 @@ export function runRestockTrial(config: RestockConfig = DEFAULT_RESTOCK): Restoc
     forecastWeekly: empty(),
     calendarStated: empty(),
     calendarMonthly: empty(),
+    autoBuy: empty(),
   };
   const accuracy: Accuracy = { absError: 0, inside: 0, measured: 0 };
   let itemYears = 0;
@@ -276,7 +365,7 @@ export function runRestockTrial(config: RestockConfig = DEFAULT_RESTOCK): Restoc
   for (let h = 0; h < config.households; h++) {
     for (const [i, item] of DEMO_ITEMS.entries()) {
       const streamSeed = config.seed + h * 101 + i * 7;
-      const world = buildWorld(config, item, mulberry32(streamSeed));
+      const world = buildWorld(config, item, mulberry32(streamSeed), mulberry32(streamSeed ^ 0x9e3779b9));
       for (const policy of Object.keys(totals) as Policy[]) {
         // The household's own behaviour (telling, reorder delay) draws from
         // an identical stream under every policy.

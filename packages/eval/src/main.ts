@@ -3,7 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { costOfTightening, lateHarmReduction, runTrial } from "./simulate.ts";
 import { runSweep } from "./sweep.ts";
-import { restockSummary, runRestockTrial, type PolicyMetrics } from "./restock.ts";
+import { meanPricePaid, restockSummary, runAutoBuySweep, runRestockTrial, type PolicyMetrics } from "./restock.ts";
 
 /**
  * Runs the trial and commits the result, so the numbers in the README are
@@ -72,6 +72,8 @@ written to ${OUT}
 const restock = runRestockTrial();
 writeFileSync(resolve(PACKAGE_ROOT, "results", "restock.json"), `${JSON.stringify(restock, null, 2)}\n`, "utf8");
 const s = restockSummary(restock);
+const autoBuySweep = runAutoBuySweep();
+writeFileSync(resolve(PACKAGE_ROOT, "results", "autobuy-sweep.json"), `${JSON.stringify(autoBuySweep, null, 2)}\n`, "utf8");
 const row = (label: string, m: PolicyMetrics, q: number) =>
   `  ${label.padEnd(30)} ${String(m.stockoutDays).padStart(7)}   ${m.meanStockDays.toFixed(1).padStart(6)}   ` +
   `${String(m.packsBought).padStart(6)}   ${String(m.earlyArrivals).padStart(6)}   ${q.toFixed(1).padStart(5)}`;
@@ -88,6 +90,23 @@ ${row("forecast, never asks", restock.forecastNoQuestions, 0)}
 ${row("forecast, asks weekly", restock.forecastWeekly, s.forecastWeekly.questionsPerHouseholdWeek)}
 ${row("calendar, household's interval", restock.calendarStated, 0)}
 ${row("calendar, monthly", restock.calendarMonthly, 0)}
+${row("Auto Buy at a target price", restock.autoBuy, 0)}
+
+Mean price paid (1.00 = usual): forecast ${meanPricePaid(restock.forecast).toFixed(3)} · Auto Buy ${meanPricePaid(restock.autoBuy).toFixed(3)}
+Packs the household had to order by hand after running out: forecast ${restock.forecast.boughtByHousehold.toLocaleString()} · Auto Buy ${restock.autoBuy.boughtByHousehold.toLocaleString()}
+
+Auto Buy depends on how often prices drop, so the whole curve:
+
+  deal every   days out of stock        stock in house (days)   price paid
+               Auto Buy   forecast      Auto Buy   forecast       Auto Buy   forecast
+${autoBuySweep
+  .map(
+    (r) =>
+      `  ~${String(r.dealEveryDays).padStart(2)} days    ${String(r.autoBuy.stockoutDays).padStart(8)}   ${String(r.forecast.stockoutDays).padStart(8)}      ` +
+      `${r.autoBuy.meanStockDays.toFixed(1).padStart(8)}   ${r.forecast.meanStockDays.toFixed(1).padStart(8)}       ` +
+      `${r.autoBuy.meanPricePaid.toFixed(3).padStart(8)}   ${r.forecast.meanPricePaid.toFixed(3).padStart(8)}`
+  )
+  .join("\n")}
 
 Forecast accuracy: off by ${restock.forecastAccuracy.meanAbsErrorDays.toFixed(1)} days on average; the real
 days-left fell inside its 80% range ${(restock.forecastAccuracy.coverage80 * 100).toFixed(1)}% of the time.

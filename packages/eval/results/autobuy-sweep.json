@@ -1,0 +1,62 @@
+[
+  {
+    "dealEveryDays": 60,
+    "autoBuy": {
+      "stockoutDays": 28365,
+      "meanStockDays": 19.960853638741174,
+      "meanPricePaid": 0.935096196868009,
+      "boughtByHousehold": 14378
+    },
+    "forecast": {
+      "stockoutDays": 3375,
+      "meanStockDays": 18.307698591127878,
+      "meanPricePaid": 0.9873854141315741,
+      "boughtByHousehold": 2819
+    }
+  },
+  {
+    "dealEveryDays": 30,
+    "autoBuy": {
+      "stockoutDays": 19464,
+      "meanStockDays": 36.89433169723228,
+      "meanPricePaid": 0.887624942495087,
+      "boughtByHousehold": 10028
+    },
+    "forecast": {
+      "stockoutDays": 3375,
+      "meanStockDays": 18.307698591127878,
+      "meanPricePaid": 0.9756550661150273,
+      "boughtByHousehold": 2819
+    }
+  },
+  {
+    "dealEveryDays": 14,
+    "autoBuy": {
+      "stockoutDays": 8717,
+      "meanStockDays": 93.74828461991257,
+      "meanPricePaid": 0.8351561689322409,
+      "boughtByHousehold": 4631
+    },
+    "forecast": {
+      "stockoutDays": 3375,
+      "meanStockDays": 18.307698591127878,
+      "meanPricePaid": 0.9508720694410637,
+      "boughtByHousehold": 2819
+    }
+  },
+  {
+    "dealEveryDays": 7,
+    "autoBuy": {
+      "stockoutDays": 3260,
+      "meanStockDays": 178.13572415246784,
+      "meanPricePaid": 0.8125159990196347,
+      "boughtByHousehold": 1811
+    },
+    "forecast": {
+      "stockoutDays": 3375,
+      "meanStockDays": 18.307698591127878,
+      "meanPricePaid": 0.9108785592601593,
+      "boughtByHousehold": 2819
+    }
+  }
+]

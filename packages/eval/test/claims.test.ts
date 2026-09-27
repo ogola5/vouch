@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 
 import { DEFAULT_TRIAL, lateHarmReduction, restockSummary, runRestockTrial, runTrial } from "@vouch/eval";
-import type { RestockResult, SweepRow, TrialResult } from "@vouch/eval";
+import type { AutoBuySweepRow, RestockResult, SweepRow, TrialResult } from "@vouch/eval";
 
 /**
  * Every number published in README.md, re-derived from the committed results.
@@ -91,7 +91,7 @@ describe("restocking: the README's numbers are what the simulation produces", ()
 
   it("reproduces exactly from the same seed", () => {
     const rerun = runRestockTrial(restock.config);
-    for (const policy of ["forecast", "forecastNoQuestions", "forecastWeekly", "calendarStated", "calendarMonthly"] as const) {
+    for (const policy of ["forecast", "forecastNoQuestions", "forecastWeekly", "calendarStated", "calendarMonthly", "autoBuy"] as const) {
       assert.deepEqual(rerun[policy], restock[policy], policy);
     }
     assert.deepEqual(rerun.forecastAccuracy, restock.forecastAccuracy);
@@ -128,6 +128,64 @@ describe("restocking: the README's numbers are what the simulation produces", ()
     assert.ok(coverage > 75 && coverage < 85, `an 80% range should hold about 80% of the time; got ${coverage}`);
     assert.match(README, new RegExp(`${coverage.toFixed(1)}%`));
     assert.match(README, new RegExp(`${restock.forecastAccuracy.meanAbsErrorDays.toFixed(1)} days`));
+  });
+});
+
+describe("Auto Buy (W4): the README's comparison is what the simulation produces", () => {
+  const restock = JSON.parse(
+    readFileSync(new URL("../results/restock.json", import.meta.url), "utf8")
+  ) as RestockResult;
+  const curve = JSON.parse(
+    readFileSync(new URL("../results/autobuy-sweep.json", import.meta.url), "utf8")
+  ) as AutoBuySweepRow[];
+  const s = restockSummary(restock).autoBuyVsForecast;
+  const n = (v: number) => v.toLocaleString("en-US");
+
+  it("adding prices moved none of the numbers published before it", () => {
+    // Prices draw from their own stream. If they shared one, every forecast
+    // and calendar figure above would have shifted.
+    assert.equal(restock.forecast.stockoutDays, 3375);
+    assert.equal(restock.calendarStated.stockoutDays, 4295);
+    assert.equal(restock.forecastNoQuestions.packsBought, 31065);
+  });
+
+  it("headlines the gap and Auto Buy's win side by side", () => {
+    assert.match(README, new RegExp(`${s.stockoutDaysTimes.toFixed(1)}× as many days out of stock`));
+    const byHand = s.boughtByHousehold.autoBuy / s.boughtByHousehold.forecast;
+    assert.match(README, new RegExp(`reorder by hand ${byHand.toFixed(1)}× as often`));
+    // The cost to Vouch's side of the argument, stated in the same sentence group.
+    assert.ok(s.pricePaidChange < 0, "Auto Buy should pay less — that is what it is for");
+    assert.match(README, new RegExp(`pays ${Math.abs(s.pricePaidChange).toFixed(1)}% less per pack`));
+    for (const v of [restock.autoBuy.stockoutDays, restock.autoBuy.boughtByHousehold, restock.forecast.boughtByHousehold]) {
+      assert.match(README, new RegExp(n(v)));
+    }
+  });
+
+  it("publishes the whole deal-frequency curve, including where Auto Buy wins", () => {
+    for (const row of curve) {
+      assert.match(README, new RegExp(`${n(row.autoBuy.stockoutDays)} / ${n(row.forecast.stockoutDays)}`));
+      assert.match(README, new RegExp(`${row.autoBuy.meanStockDays.toFixed(1)}\\** / ${row.forecast.meanStockDays.toFixed(1)} days`));
+    }
+    // The shape the claim rests on: rare deals run out, frequent deals stockpile.
+    const rare = curve.find((r) => r.dealEveryDays === 60)!;
+    const often = curve.find((r) => r.dealEveryDays === 7)!;
+    assert.ok(rare.autoBuy.stockoutDays > 5 * rare.forecast.stockoutDays);
+    assert.ok(often.autoBuy.stockoutDays <= often.forecast.stockoutDays, "weekly deals: Auto Buy's win");
+    assert.ok(often.autoBuy.meanStockDays > 5 * often.forecast.meanStockDays, "…bought by stockpiling");
+    assert.match(README, /never sees what is left/);
+  });
+
+  it("reproduces a curve row from the same seed", () => {
+    // One row (the one where Auto Buy wins) rather than all four, to keep `npm test` fast.
+    const often = curve.find((r) => r.dealEveryDays === 7)!;
+    const rerun = runRestockTrial({ ...restock.config, dealsPerDay: 1 / 7 });
+    assert.equal(rerun.autoBuy.stockoutDays, often.autoBuy.stockoutDays);
+    assert.equal(rerun.autoBuy.meanStockDays, often.autoBuy.meanStockDays);
+  });
+
+  it("states the assumptions it rests on", () => {
+    assert.match(README, /re-arms Auto Buy after every purchase/);
+    assert.match(README, /not Amazon data/);
   });
 });
 

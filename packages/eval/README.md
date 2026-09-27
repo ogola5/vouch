@@ -133,6 +133,39 @@ buying early.
 **The forecast is calibrated, not just better.** Its "days left" is off by 7.3 days on average,
 and the real value fell inside its stated 80% range 79.7% of the time — it is as unsure as it says.
 
+### Against Amazon's Auto Buy (a price trigger)
+
+Auto Buy completes a purchase when the price reaches the household's target (BUILD_PLAN.md §5c,
+primary). It has no view of how much is left. The simulation uses the same households, the same
+consumption and the same "we're out → reorder by hand" behaviour. On top of those:
+- Deals start on about 1 day in 30, last 4 days, and take 20% off.
+- The Auto Buy target is 15% below the usual price.
+- The household **re-arms Auto Buy after every purchase**. That is the most generous reading;
+  whether Amazon re-arms a request is not something we have confirmed.
+
+| | days out of stock | stock in the house | packs ordered by hand after running out | price paid (1.00 = usual) |
+|---|---|---|---|---|
+| **forecast (default)** | 3,375 | 18.3 days | 2,819 | 0.976 |
+| Auto Buy at a target price | 19,464 | 36.9 days | 10,028 | 0.888 |
+
+**Auto Buy's households spend 5.8× as many days out of stock and reorder by hand 3.6× as often.
+Auto Buy also pays 9.0% less per pack**, because buying only on deals is exactly what it is for.
+That win is real, and it is reported here, not hidden.
+
+**The result depends on how often prices drop, so here is the whole curve:**
+
+| a deal every | days out of stock (Auto Buy / forecast) | stock in the house (Auto Buy / forecast) |
+|---|---|---|
+| ~60 days | 28,365 / 3,375 | 20.0 / 18.3 days |
+| ~30 days | 19,464 / 3,375 | 36.9 / 18.3 days |
+| ~14 days | 8,717 / 3,375 | 93.7 / 18.3 days |
+| ~7 days | **3,260 / 3,375** | **178.1** / 18.3 days |
+
+When deals are weekly, Auto Buy runs out slightly *less* than the forecast, but only by keeping
+about half a year of stock in the house. When deals are rare, it runs out. A price trigger cannot
+avoid both, because it never sees what is left. That is the gap the household forecast fills; it
+is not a claim that Auto Buy is badly built.
+
 ### What this found that the unit tests had not
 
 The first version averaged **90 days** of stock in the house. An agent that buys *before* the house
@@ -151,3 +184,6 @@ as "still lasting".
 - Restocking: consumption, reporting and answer accuracy are all assumed, not measured. Delivery is
   a fixed 2 days. A household's pace is assumed stable apart from guests; a new baby or a new dog
   would need a real change detector, which the model does not have.
+- Auto Buy: the deal pattern, the target and the re-arming are assumptions, not Amazon data.
+  Deals are the same for every item and never overlap with a price rise, and both policies pay
+  the day's price. Only one Auto Buy behaviour is modelled — price reaches target, one purchase.
