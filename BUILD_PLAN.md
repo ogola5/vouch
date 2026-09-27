@@ -528,7 +528,20 @@ household; replay, wrong action, wrong origin, no user verification, altered sig
 challenge and a backwards counter are all refused (13 tests, software authenticator over HTTP).
 The approval's signed bytes are stored on the Vouch (`household_approval`) and re-verify with the
 public key alone. Console must be opened at `http://localhost:4030` — browsers refuse passkeys on
-an IP; the page says so. **Remaining: W3b, the hash-chained record.**
+an IP; the page says so.
+
+**W3b DONE 2026-09-28 — the tamper-evident record.** Vouches change legitimately (held → approved,
+a dispute added), so the chain is over an append-only `ledger` of snapshots, written in the same
+transaction as the Vouch. `GET /household/record` checks three things: every entry hashes to what
+the next recorded; every current Vouch matches its latest snapshot; every passkey approval re-verifies
+(nonce stored, so anyone recomputes `sha256(nonce ‖ action)`) and the chain head it SIGNED still
+exists. The third is what catches a careful, internally consistent rewrite of the whole ledger — a
+test does exactly that rewrite and the chain check alone passes; the anchor does not. Console: "✓
+Record verified" or "⚠ This record has been altered" naming which record and how; a labelled demo
+control edits an old price to show it caught. Honest limits (README): history after the last signed
+approval can be rewritten by someone with DB access; mandates/disputes not chained; pre-ledger
+databases are chained from upgrade. Known rough edge: if the ledger moves between issuing an approval
+challenge and signing it, the signature names a stale head and is refused — the household signs again.
 
 **W3 design — AGREED WITH THE OWNER 2026-09-27.** The rule is the project's own, applied to people:
 *anything that spends money or widens the agent's authority needs a passkey; anything that narrows

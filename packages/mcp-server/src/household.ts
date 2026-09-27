@@ -2,7 +2,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VouchService } from "./service.ts";
 import type { HouseholdAgent, NoticeResponse } from "./householdAgent.ts";
 import type { Autonomy, Mandate } from "@vouch/shared";
-import { PasskeyError, PasskeyRequired, type PasskeyGuard, type PasskeyProof, type ProtectedAction } from "./passkey.ts";
+import {
+  PasskeyError,
+  PasskeyRequired,
+  verifyApproval,
+  type PasskeyGuard,
+  type PasskeyProof,
+  type ProtectedAction,
+} from "./passkey.ts";
 
 /**
  * The HOUSEHOLD's surface, deliberately separate from the agent's MCP tools.
@@ -243,6 +250,60 @@ export async function handleHouseholdRequest(
       return true;
     }
 
+    /*
+     * The tamper-evident record, checked end to end: the chain, every Vouch
+     * against its history, and every passkey approval — its signature, and
+     * the chain entry it anchored. A consistent rewrite of the whole ledger
+     * passes the first two checks; it cannot pass the third without the
+     * household's private key.
+     */
+    if (method === "GET" && pathname === "/household/record") {
+      const report = service.verifyLedger();
+      const problems = [...report.problems];
+      let approvals = 0;
+      const keys = guard?.passkeys() ?? [];
+      for (const v of service.listVouches({ limit: 1000 })) {
+        const a = v.household_approval;
+        if (!a || !a.nonce) continue;
+        approvals++;
+        const key = keys.find((k) => k.credential_id === a.credential_id);
+        const check = key ? verifyApproval(key, { ...a, nonce: a.nonce }) : { ok: false as const, problem: "its passkey is not on file" };
+        if (!check.ok) problems.push({ vouch_id: v.vouch_id, problem: `its passkey approval fails: ${check.problem}` });
+        let anchor: { seq: number; hash: string } | null = null;
+        try {
+          anchor = (JSON.parse(a.action) as { chain_head?: { seq: number; hash: string } | null }).chain_head ?? null;
+        } catch {
+          /* reported by the signature check */
+        }
+        if (anchor && service.ledgerEntry(anchor.seq)?.hash !== anchor.hash) {
+          problems.push({
+            seq: anchor.seq,
+            problem: `the history up to this entry was rewritten after the household approved ${v.decision.product} with its passkey`,
+          });
+        }
+      }
+      send(res, 200, { ...report, ok: problems.length === 0, problems, approvals_checked: approvals });
+      return true;
+    }
+    if (pathname === "/household/demo/tamper" && method === "POST") {
+      // DEMO CONTROL: edit an old record the way someone with database access
+      // might, so the console can show it being caught. Named as a demo.
+      const body = await readJson(req);
+      const target =
+        typeof body.vouch_id === "string"
+          ? body.vouch_id
+          : service.listVouches({ limit: 1000 }).reverse().find((v) => v.action.status === "Complete")?.vouch_id;
+      if (!target) {
+        send(res, 400, { error: "No completed purchase to tamper with yet" });
+        return true;
+      }
+      const before = service.listVouches({ limit: 1000 }).find((v) => v.vouch_id === target)!;
+      const price = typeof body.price === "number" ? body.price : Math.round(before.decision.price * 50) / 100;
+      service.tamperForDemo(target, price);
+      send(res, 200, { vouch_id: target, price_was: before.decision.price, price_now: price });
+      return true;
+    }
+
     if (method === "GET" && pathname === "/household/state") {
       send(res, 200, {
         mandates: service.listMandates(),
@@ -276,7 +337,8 @@ export async function handleHouseholdRequest(
         // Spends money the gate refused to spend: passkey, bound to THIS Vouch.
         const held = service.listVouches({ limit: 200 }).find((v) => v.vouch_id === vouchId);
         const approval = requirePasskey(
-          { kind: "approve_purchase", vouch_id: vouchId! },
+          // Signing the record's latest entry anchors all history before it.
+          { kind: "approve_purchase", vouch_id: vouchId!, chain_head: service.ledgerHead() },
           held ? `Approve ${held.decision.product} — $${held.decision.price.toFixed(2)}` : `Approve purchase ${vouchId}`,
           body
         );

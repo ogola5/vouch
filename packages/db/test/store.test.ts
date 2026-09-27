@@ -61,6 +61,70 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
   });
 }
 
+describe("the tamper-evident record", () => {
+  const fileStore = () => {
+    const path = join(mkdtempSync(join(tmpdir(), "vouch-ledger-")), "ledger.db");
+    return { path, store: VouchStore.open(path) };
+  };
+
+  it("keeps an unbroken history through honest changes — held, approved, disputed", () => {
+    const store = VouchStore.open();
+    seedMandate(store);
+    const v = seedVouch(store, "v1");
+    store.saveVouch({ ...v, confidence: "medium" });
+    store.recordDispute({ vouch_id: "v1", reason: "no", newThreshold: 0.88, delta: 0.03 });
+    const report = store.verifyLedger();
+    assert.equal(report.ok, true, JSON.stringify(report.problems));
+    assert.equal(report.entries, 3, "every write is an entry; nothing is overwritten");
+    store.close();
+  });
+
+  it("names the entry that was edited", () => {
+    const { path, store } = fileStore();
+    seedMandate(store);
+    seedVouch(store, "v1");
+    seedVouch(store, "v2");
+    const raw = new DatabaseSync(path);
+    const row = raw.prepare("SELECT doc FROM ledger WHERE seq = 1").get() as { doc: string };
+    raw.prepare("UPDATE ledger SET doc = ? WHERE seq = 1").run(row.doc.replace("12.49", "1.99"));
+    raw.close();
+    const report = store.verifyLedger();
+    assert.equal(report.ok, false);
+    assert.ok(report.problems.some((p) => p.seq === 1 && /changed after it was written/.test(p.problem)));
+    store.close();
+  });
+
+  it("notices an entry quietly deleted", () => {
+    const { path, store } = fileStore();
+    seedMandate(store);
+    seedVouch(store, "v1");
+    seedVouch(store, "v2");
+    seedVouch(store, "v3");
+    const raw = new DatabaseSync(path);
+    raw.prepare("DELETE FROM ledger WHERE seq = 2").run();
+    raw.close();
+    const report = store.verifyLedger();
+    assert.ok(report.problems.some((p) => p.seq === 3 && /missing|follow on/.test(p.problem)), JSON.stringify(report.problems));
+    store.close();
+  });
+
+  it("chains a database from before the record existed — once, and from that point", () => {
+    const { path, store } = fileStore();
+    seedMandate(store);
+    seedVouch(store, "v1");
+    store.close();
+    const raw = new DatabaseSync(path);
+    raw.prepare("DELETE FROM ledger").run();
+    raw.close();
+
+    const reopened = VouchStore.open(path);
+    const report = reopened.verifyLedger();
+    assert.equal(report.ok, true);
+    assert.equal(report.entries, 1);
+    reopened.close();
+  });
+});
+
 describe("records written before the gate's numbers were kept", () => {
   it("still load, with the missing numbers as null rather than a guess", () => {
     // A Vouch is stored as a JSON document, so this is the whole migration

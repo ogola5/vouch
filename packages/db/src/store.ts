@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Mandate, Vouch } from "@vouch/shared";
 import { SCHEMA_SQL } from "./schema.ts";
 
@@ -45,8 +45,42 @@ export interface ThresholdChange {
   threshold_after: number;
 }
 
+/** The first entry's "previous hash". */
+export const LEDGER_GENESIS = "0".repeat(64);
+
+/** Stable JSON: keys sorted at every level, so the same record always hashes the same. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * The hash of one ledger entry. Exported so anyone — a test, an auditor, a
+ * judge — can recompute the chain from the rows alone.
+ */
+export function ledgerHash(prevHash: string, seq: number, vouchId: string, snapshot: unknown): string {
+  return createHash("sha256")
+    .update(`${prevHash}\n${canonicalJson({ seq, vouch_id: vouchId, vouch: snapshot })}`)
+    .digest("hex");
+}
+
+export interface LedgerReport {
+  ok: boolean;
+  entries: number;
+  head: { seq: number; hash: string } | null;
+  /** Every problem found, in words — never just "invalid". */
+  problems: { seq?: number; vouch_id?: string; problem: string }[];
+}
+
 export class VouchStore {
   private readonly db: DatabaseSync;
+  private depth = 0;
 
   private constructor(db: DatabaseSync) {
     this.db = db;
@@ -56,7 +90,24 @@ export class VouchStore {
   static open(location = ":memory:"): VouchStore {
     const db = new DatabaseSync(location);
     db.exec(SCHEMA_SQL);
-    return new VouchStore(db);
+    const store = new VouchStore(db);
+    store.backfillLedger();
+    return store;
+  }
+
+  /**
+   * A database from before the ledger existed has Vouches and no history.
+   * They are chained as they stand, once — which proves nothing about what
+   * happened to them BEFORE this point, and the README says so.
+   */
+  private backfillLedger(): void {
+    const chained = this.db.prepare(`SELECT COUNT(*) AS n FROM ledger`).get() as { n: number };
+    if (chained.n > 0) return;
+    const rows = this.db.prepare(`SELECT doc FROM vouches ORDER BY created_at ASC, vouch_id ASC`).all() as { doc: string }[];
+    if (rows.length === 0) return;
+    this.transaction(() => {
+      for (const row of rows) this.appendLedger(Vouch.parse(JSON.parse(row.doc)));
+    });
   }
 
   close(): void {
@@ -115,24 +166,131 @@ export class VouchStore {
 
   saveVouch(vouch: Vouch): Vouch {
     const parsed = Vouch.parse(vouch);
-    this.db
-      .prepare(
-        `INSERT INTO vouches (vouch_id, mandate_id, created_at, action_status, within_bounds, doc)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (vouch_id) DO UPDATE SET
-           action_status = excluded.action_status,
-           within_bounds = excluded.within_bounds,
-           doc           = excluded.doc`
-      )
-      .run(
-        parsed.vouch_id,
-        parsed.authority.mandate_id,
-        parsed.created_at,
-        parsed.action.status,
-        parsed.authority.within_bounds ? 1 : 0,
-        JSON.stringify(parsed)
-      );
+    // The row and its history are written together or not at all.
+    this.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO vouches (vouch_id, mandate_id, created_at, action_status, within_bounds, doc)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (vouch_id) DO UPDATE SET
+             action_status = excluded.action_status,
+             within_bounds = excluded.within_bounds,
+             doc           = excluded.doc`
+        )
+        .run(
+          parsed.vouch_id,
+          parsed.authority.mandate_id,
+          parsed.created_at,
+          parsed.action.status,
+          parsed.authority.within_bounds ? 1 : 0,
+          JSON.stringify(parsed)
+        );
+      this.appendLedger(parsed);
+    });
     return parsed;
+  }
+
+  /* ---------------------------------------------------------------------
+   * The tamper-evident record
+   * ------------------------------------------------------------------ */
+
+  private appendLedger(vouch: Vouch): void {
+    const head = this.ledgerHead();
+    const seq = (head?.seq ?? 0) + 1;
+    const prev = head?.hash ?? LEDGER_GENESIS;
+    const snapshot = JSON.parse(JSON.stringify(vouch)) as unknown;
+    this.db
+      .prepare(`INSERT INTO ledger (seq, vouch_id, prev_hash, hash, doc) VALUES (?, ?, ?, ?, ?)`)
+      .run(seq, vouch.vouch_id, prev, ledgerHash(prev, seq, vouch.vouch_id, snapshot), canonicalJson(snapshot));
+  }
+
+  /** The latest entry — what a passkey approval signs, to anchor the history before it. */
+  ledgerHead(): { seq: number; hash: string } | null {
+    const row = this.db.prepare(`SELECT seq, hash FROM ledger ORDER BY seq DESC LIMIT 1`).get() as
+      | { seq: number; hash: string }
+      | undefined;
+    return row ? { seq: row.seq, hash: row.hash } : null;
+  }
+
+  ledgerEntry(seq: number): { seq: number; hash: string } | null {
+    const row = this.db.prepare(`SELECT seq, hash FROM ledger WHERE seq = ?`).get(seq) as
+      | { seq: number; hash: string }
+      | undefined;
+    return row ?? null;
+  }
+
+  /**
+   * Recomputes the whole chain and checks every Vouch against its history.
+   * Reports each problem in words, so "the record was altered" comes with
+   * WHICH record and HOW.
+   */
+  verifyLedger(): LedgerReport {
+    const entries = this.db
+      .prepare(`SELECT seq, vouch_id, prev_hash, hash, doc FROM ledger ORDER BY seq ASC`)
+      .all() as { seq: number; vouch_id: string; prev_hash: string; hash: string; doc: string }[];
+    const problems: LedgerReport["problems"] = [];
+    const latest = new Map<string, string>();
+    let prev = LEDGER_GENESIS;
+    let expected = 1;
+
+    for (const e of entries) {
+      if (e.seq !== expected) problems.push({ seq: e.seq, problem: "an entry before this one is missing" });
+      if (e.prev_hash !== prev) problems.push({ seq: e.seq, problem: "does not follow on from the entry before it" });
+      let snapshot: unknown;
+      try {
+        snapshot = JSON.parse(e.doc);
+      } catch {
+        problems.push({ seq: e.seq, problem: "is not readable" });
+        prev = e.hash;
+        expected = e.seq + 1;
+        continue;
+      }
+      if (ledgerHash(e.prev_hash, e.seq, e.vouch_id, snapshot) !== e.hash) {
+        problems.push({ seq: e.seq, vouch_id: e.vouch_id, problem: "was changed after it was written" });
+      }
+      latest.set(e.vouch_id, canonicalJson(snapshot));
+      prev = e.hash;
+      expected = e.seq + 1;
+    }
+
+    const rows = this.db.prepare(`SELECT vouch_id, doc FROM vouches`).all() as { vouch_id: string; doc: string }[];
+    for (const row of rows) {
+      const recorded = latest.get(row.vouch_id);
+      if (recorded === undefined) {
+        problems.push({ vouch_id: row.vouch_id, problem: "has no history in the record" });
+        continue;
+      }
+      let current: string;
+      try {
+        current = canonicalJson(JSON.parse(row.doc));
+      } catch {
+        problems.push({ vouch_id: row.vouch_id, problem: "is not readable" });
+        continue;
+      }
+      if (current !== recorded) problems.push({ vouch_id: row.vouch_id, problem: "no longer matches its recorded history" });
+    }
+
+    const last = entries[entries.length - 1];
+    return {
+      ok: problems.length === 0,
+      entries: entries.length,
+      head: last ? { seq: last.seq, hash: last.hash } : null,
+      problems,
+    };
+  }
+
+  /**
+   * DEMO CONTROL, and named as one: edits a Vouch's price directly in the
+   * table, the way someone with database access might — bypassing the
+   * ledger — so the console can show the edit being caught. It is reachable
+   * only from the household demo controls, never from the agent.
+   */
+  tamperForDemo(vouchId: string, price: number): void {
+    const row = this.db.prepare(`SELECT doc FROM vouches WHERE vouch_id = ?`).get(vouchId) as { doc: string } | undefined;
+    if (!row) throw new Error(`No vouch with id "${vouchId}"`);
+    const doc = JSON.parse(row.doc) as { decision: { price: number } };
+    doc.decision.price = price;
+    this.db.prepare(`UPDATE vouches SET doc = ? WHERE vouch_id = ?`).run(JSON.stringify(doc), vouchId);
   }
 
   getVouch(vouchId: string): Vouch | null {
@@ -400,7 +558,19 @@ export class VouchStore {
    * BEGIN, and nothing here nests.
    */
   private transaction<T>(fn: () => T): T {
+    // Re-entrant: saveVouch now opens one, and recordDispute already calls
+    // saveVouch inside its own. SQLite rejects a nested BEGIN, so an inner
+    // call simply joins the outer transaction.
+    if (this.depth > 0) {
+      this.depth++;
+      try {
+        return fn();
+      } finally {
+        this.depth--;
+      }
+    }
     this.db.exec("BEGIN");
+    this.depth = 1;
     try {
       const result = fn();
       this.db.exec("COMMIT");
@@ -408,6 +578,8 @@ export class VouchStore {
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
+    } finally {
+      this.depth = 0;
     }
   }
 }

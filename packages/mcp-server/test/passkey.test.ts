@@ -3,7 +3,11 @@ import { after, before, describe, it } from "node:test";
 import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import type { Server } from "node:http";
 
-import { VouchStore } from "@vouch/db";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { LEDGER_GENESIS, VouchStore, canonicalJson, ledgerHash } from "@vouch/db";
 import { startMerchantServer } from "@vouch/mock-merchant";
 import { RuleBasedReasoningProvider } from "@vouch/reasoning";
 import { MockRingProvider } from "@vouch/ring-integration";
@@ -13,6 +17,7 @@ import {
   PasskeyGuard,
   VouchService,
   startVouchHttpServer,
+  verifyApproval,
   verifySignature,
 } from "@vouch/mcp-server";
 import type { StoredPasskey } from "@vouch/mcp-server";
@@ -81,9 +86,9 @@ interface Rig {
   close: () => void;
 }
 
-async function rig(): Promise<Rig> {
+async function rig(location = ":memory:"): Promise<Rig> {
   const merchant = await startMerchantServer(0);
-  const store = VouchStore.open(":memory:");
+  const store = VouchStore.open(location);
   const service = new VouchService({
     store,
     merchant: new HttpMerchantClient(merchant.url),
@@ -177,7 +182,9 @@ describe("passkeys: spending and widening need one, narrowing never does", () =>
     assert.equal(res.status, 401);
     assert.equal(res.body.needs_passkey, true);
     assert.match(res.body.description, /Brand C.*\$27\.80/);
-    assert.deepEqual(res.body.action, { kind: "approve_purchase", vouch_id: held.vouch_id });
+    // The action also carries the record's latest entry (W3b): signing it
+    // anchors the whole history before it to the household's device.
+    assert.deepEqual(res.body.action, { kind: "approve_purchase", vouch_id: held.vouch_id, chain_head: r.store.ledgerHead() });
     assert.ok(res.body.challenge && res.body.challenge_id);
   });
 
@@ -281,6 +288,78 @@ describe("passkeys: handing an item over to the agent", () => {
   });
 });
 
+describe("the tamper-evident record", () => {
+  // A file database, so the test can reach past the application and edit
+  // rows directly — the way someone with access to the disk could.
+  const path = join(mkdtempSync(join(tmpdir(), "vouch-record-")), "record.db");
+  let r: Rig;
+  const auth = new SoftwareAuthenticator();
+  let approvedId = "";
+  before(async () => {
+    r = await rig(path);
+    await registerPasskey(r, auth);
+    // Some history, then a passkey approval that anchors it.
+    await r.service.proposePurchase({ mandate_id: "m_detergent", product_id: "detergent-brand-a", brand: "Brand A", quantity: 1, confidence: 0.95, reason: ["restock"] });
+    const held = await heldBrandC(r);
+    const ask = await call(r, `vouches/${held.vouch_id}/approve`);
+    const ok = await call(r, `vouches/${held.vouch_id}/approve`, "POST", { passkey: auth.sign(ask.body) });
+    assert.equal(ok.status, 200);
+    approvedId = held.vouch_id;
+  });
+  after(() => r.close());
+
+  it("verifies end to end: the chain, every Vouch, and the passkey approval", async () => {
+    const report = await call(r, "record", "GET");
+    assert.equal(report.body.ok, true, JSON.stringify(report.body.problems));
+    assert.equal(report.body.approvals_checked, 1);
+    assert.equal(report.body.entries, 3, "every write of a Vouch is an entry: bought, held, then approved");
+  });
+
+  it("the approval re-verifies from the record and the public key alone", () => {
+    const vouch = r.service.listVouches({ limit: 50 }).find((v) => v.vouch_id === approvedId)!;
+    const key = (r.store.listPasskeys() as StoredPasskey[])[0]!;
+    const a = vouch.household_approval!;
+    assert.deepEqual(verifyApproval(key, { ...a, nonce: a.nonce! }), { ok: true });
+    // Change one character of what was approved and it no longer holds.
+    const forged = { ...a, nonce: a.nonce!, action: a.action.replace(approvedId, "vouch_someone_else") };
+    assert.equal(verifyApproval(key, forged).ok, false);
+  });
+
+  it("catches a price edited straight in the table the console reads", async () => {
+    const bought = r.service.listVouches({ limit: 50 }).find((v) => v.decision.product.includes("Brand A"))!;
+    r.service.tamperForDemo(bought.vouch_id, 1.99);
+    const report = await call(r, "record", "GET");
+    assert.equal(report.body.ok, false);
+    assert.ok(
+      report.body.problems.some((p: any) => p.vouch_id === bought.vouch_id && /no longer matches/.test(p.problem)),
+      JSON.stringify(report.body.problems)
+    );
+  });
+
+  it("catches a whole-ledger rewrite that is internally consistent — through the passkey's anchor", async () => {
+    // The hard case: edit the FIRST entry's price, then recompute every hash
+    // after it and fix the table to match. The chain alone now checks out.
+    // What cannot be recomputed is the chain head the household SIGNED.
+    const raw = new DatabaseSync(path);
+    const rows = raw.prepare("SELECT seq, vouch_id, doc FROM ledger ORDER BY seq").all() as { seq: number; vouch_id: string; doc: string }[];
+    let prev = LEDGER_GENESIS;
+    for (const row of rows) {
+      const snapshot = JSON.parse(row.doc);
+      if (row.seq === 1) snapshot.decision.price = 0.99;
+      const hash = ledgerHash(prev, row.seq, row.vouch_id, snapshot);
+      raw.prepare("UPDATE ledger SET prev_hash = ?, hash = ?, doc = ? WHERE seq = ?").run(prev, hash, canonicalJson(snapshot), row.seq);
+      raw.prepare("UPDATE vouches SET doc = ? WHERE vouch_id = ?").run(JSON.stringify(snapshot), row.vouch_id);
+      prev = hash;
+    }
+    raw.close();
+
+    assert.equal(r.store.verifyLedger().ok, true, "a careful rewrite does pass the chain check on its own");
+    const report = await call(r, "record", "GET");
+    assert.equal(report.body.ok, false, "but not the household's signed anchor");
+    assert.ok(report.body.problems.some((p: any) => /rewritten after the household approved/.test(p.problem)), JSON.stringify(report.body.problems));
+  });
+});
+
 describe("the guard itself", () => {
   it("refuses an expired challenge, and a counter that goes backwards", async () => {
     const store = VouchStore.open(":memory:");
@@ -288,7 +367,7 @@ describe("the guard itself", () => {
     const guard = new PasskeyGuard({ store, rpId: RP_ID, origins: [ORIGIN], now: () => now });
     const auth = new SoftwareAuthenticator();
     guard.register(auth.register(guard.registrationOptions()));
-    const action = { kind: "approve_purchase" as const, vouch_id: "v1" };
+    const action = { kind: "approve_purchase" as const, vouch_id: "v1", chain_head: null };
 
     const stale = guard.actionChallenge(action, "Approve v1");
     now += 3 * 60_000;

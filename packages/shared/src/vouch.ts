@@ -131,6 +131,8 @@ export const Vouch = z.object({
   household_approval: z
     .object({
       credential_id: z.string(),
+      /** Recomputes the signed challenge from the action: sha256(nonce ‖ action). */
+      nonce: z.string().nullable().default(null),
       action: z.string(),
       description: z.string(),
       signed_at: z.string(),

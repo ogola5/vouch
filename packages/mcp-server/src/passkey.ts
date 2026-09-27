@@ -28,7 +28,13 @@ import type { VouchStore } from "@vouch/db";
  */
 
 export type ProtectedAction =
-  | { kind: "approve_purchase"; vouch_id: string }
+  /**
+   * `chain_head` is the tamper-evident record's latest entry at the moment of
+   * approval (W3b). Signing it anchors the whole history before it to the
+   * household's device: a consistent rewrite of the ledger would no longer
+   * contain the hash the passkey signed.
+   */
+  | { kind: "approve_purchase"; vouch_id: string; chain_head: { seq: number; hash: string } | null }
   | { kind: "edit_mandate"; mandate_id: string; changes: Record<string, unknown> }
   | { kind: "set_autonomy"; item_id: string; change: Record<string, unknown> }
   | { kind: "accept_handover"; item_id: string };
@@ -55,6 +61,8 @@ export interface StoredPasskey {
 /** What gets written on the record: enough for anyone to re-verify it. */
 export interface ApprovalRecord {
   credential_id: string;
+  /** Not secret: with it, anyone can recompute the challenge from the action. */
+  nonce: string;
   action: string;
   description: string;
   signed_at: string;
@@ -239,6 +247,7 @@ export class PasskeyGuard {
 
     return {
       credential_id: passkey.credential_id,
+      nonce: b64url.encode(pending.nonce!),
       action: pending.action!,
       description: pending.description ?? "",
       signed_at: new Date(this.now()).toISOString(),
@@ -292,6 +301,27 @@ export class PasskeyGuard {
     if (!(flags & FLAG_USER_VERIFIED)) throw new PasskeyError(401, "The approval was not verified (fingerprint, face or PIN).");
     return { signCount: auth.readUInt32BE(33) };
   }
+}
+
+/**
+ * Re-checks a stored approval completely, from the record and the public key
+ * alone: that the challenge the device signed really was derived from THIS
+ * action (sha256(nonce ‖ action)), and that the signature over it verifies.
+ */
+export function verifyApproval(
+  passkey: Pick<StoredPasskey, "public_key" | "algorithm">,
+  approval: Pick<ApprovalRecord, "nonce" | "action" | "authenticator_data" | "client_data_json" | "signature">
+): { ok: true } | { ok: false; problem: string } {
+  const expected = b64url.encode(sha256(Buffer.concat([b64url.decode(approval.nonce), Buffer.from(approval.action)])));
+  let challenge: string | undefined;
+  try {
+    challenge = JSON.parse(b64url.decode(approval.client_data_json).toString("utf8")).challenge;
+  } catch {
+    return { ok: false, problem: "its signed data is not readable" };
+  }
+  if (challenge !== expected) return { ok: false, problem: "the signature does not cover the action recorded with it" };
+  if (!verifySignature(passkey, approval)) return { ok: false, problem: "the passkey signature does not verify" };
+  return { ok: true };
 }
 
 /**

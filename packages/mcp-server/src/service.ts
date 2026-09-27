@@ -12,7 +12,7 @@ import {
   type UcpCheckoutSession,
   type Vouch,
 } from "@vouch/shared";
-import type { VouchStore } from "@vouch/db";
+import type { LedgerReport, VouchStore } from "@vouch/db";
 import {
   evidenceConfidence,
   gateConfidence,
@@ -652,6 +652,21 @@ export class VouchService {
 
   listVouches(filter: { mandate_id?: string; since?: string; limit?: number } = {}): Vouch[] {
     return this.store.listVouches(filter);
+  }
+
+  /* The tamper-evident record (W3b) — see packages/db ledger. */
+  ledgerHead(): { seq: number; hash: string } | null {
+    return this.store.ledgerHead();
+  }
+  ledgerEntry(seq: number): { seq: number; hash: string } | null {
+    return this.store.ledgerEntry(seq);
+  }
+  verifyLedger(): LedgerReport {
+    return this.store.verifyLedger();
+  }
+  /** DEMO CONTROL: see VouchStore.tamperForDemo. */
+  tamperForDemo(vouchId: string, price: number): void {
+    this.store.tamperForDemo(vouchId, price);
   }
 
   async explainVouch(vouchId: string): Promise<string> {

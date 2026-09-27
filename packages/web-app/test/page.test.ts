@@ -187,6 +187,13 @@ describe("the console page holds together", () => {
     assert.match(scriptBody(), /Browsers only allow passkeys on a named site/);
   });
 
+  it("reports a tampered record in words, and labels the tamper button as a simulation", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /This record has been altered outside the app/);
+    assert.match(code, /Record verified/);
+    assert.match(html, /Simulate someone editing an old record/);
+  });
+
   it("can say 'nobody asked' on the record", () => {
     assert.match(scriptBody(), /Nobody asked — your household agent did this on its own/);
   });

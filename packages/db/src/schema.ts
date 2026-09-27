@@ -104,6 +104,23 @@ CREATE TABLE IF NOT EXISTS household_meta (
  * the private key never leaves the household's device. sign_count is kept so
  * a cloned authenticator replaying an old counter is refused.
  */
+/*
+ * The tamper-evident record (BUILD_PLAN.md §3b, W3b). A Vouch changes
+ * legitimately — held becomes approved, a dispute is added — so the chain is
+ * not over the Vouch itself but over an APPEND-ONLY history of it: every
+ * write of a Vouch appends a snapshot, hashed together with the previous
+ * entry's hash. Editing any entry breaks every link after it; editing the
+ * vouches table the console reads no longer matches its latest snapshot.
+ */
+CREATE TABLE IF NOT EXISTS ledger (
+  seq        INTEGER PRIMARY KEY,
+  vouch_id   TEXT NOT NULL,
+  prev_hash  TEXT NOT NULL,
+  hash       TEXT NOT NULL,
+  doc        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_vouch ON ledger (vouch_id, seq);
+
 CREATE TABLE IF NOT EXISTS passkeys (
   credential_id  TEXT PRIMARY KEY,
   doc            TEXT NOT NULL
