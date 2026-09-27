@@ -57,6 +57,7 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     user_controls: ["explain", "dispute"],
     dispute: null,
     household: null,
+    household_approval: null,
   });
 }
 

@@ -98,4 +98,14 @@ CREATE TABLE IF NOT EXISTS household_meta (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+/*
+ * The household's passkeys (WebAuthn). Only the PUBLIC key is ever stored —
+ * the private key never leaves the household's device. sign_count is kept so
+ * a cloned authenticator replaying an old counter is refused.
+ */
+CREATE TABLE IF NOT EXISTS passkeys (
+  credential_id  TEXT PRIMARY KEY,
+  doc            TEXT NOT NULL
+);
 `;

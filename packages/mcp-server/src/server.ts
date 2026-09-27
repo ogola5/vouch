@@ -5,6 +5,7 @@ import { registerVouchTools } from "./tools.ts";
 import { handleHouseholdRequest } from "./household.ts";
 import type { VouchService } from "./service.ts";
 import type { HouseholdAgent } from "./householdAgent.ts";
+import type { PasskeyGuard } from "./passkey.ts";
 
 /**
  * Vouch's MCP server over Streamable HTTP — the transport the Alexa+ track's
@@ -151,10 +152,10 @@ export function createVouchHttpServer(options: McpServerOptions): Server {
  * and there is no authentication on them yet. Keeping them on a port that
  * never leaves the machine is what makes that acceptable; see household.ts.
  */
-export function createHouseholdHttpServer(service: VouchService, agent?: HouseholdAgent): Server {
+export function createHouseholdHttpServer(service: VouchService, agent?: HouseholdAgent, passkeys?: PasskeyGuard): Server {
   return createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    void handleHouseholdRequest(req, res, service, url.pathname, agent)
+    void handleHouseholdRequest(req, res, service, url.pathname, agent, passkeys)
       .then((handled) => {
         if (!handled && !res.headersSent) {
           res.writeHead(404, { "Content-Type": "application/json" });
@@ -181,6 +182,8 @@ export interface StartOptions extends McpServerOptions {
   householdPort?: number;
   /** The household model. Its controls live on the household surface, never the agent's. */
   householdAgent?: HouseholdAgent;
+  /** Passkeys for the household's widening powers. */
+  passkeys?: PasskeyGuard;
 }
 
 export function startVouchHttpServer(
@@ -188,7 +191,7 @@ export function startVouchHttpServer(
   options: StartOptions
 ): Promise<{ server: Server; householdServer: Server; url: string; householdUrl: string }> {
   const server = createVouchHttpServer(options);
-  const householdServer = createHouseholdHttpServer(options.service, options.householdAgent);
+  const householdServer = createHouseholdHttpServer(options.service, options.householdAgent, options.passkeys);
   const host = options.host ?? "127.0.0.1";
 
   return new Promise((resolve) => {

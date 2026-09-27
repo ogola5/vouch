@@ -9,6 +9,7 @@ import {
 import { HttpMerchantClient } from "./merchantClient.ts";
 import { VouchService } from "./service.ts";
 import { HouseholdAgent } from "./householdAgent.ts";
+import { PasskeyGuard } from "./passkey.ts";
 import { startVouchHttpServer } from "./server.ts";
 
 /**
@@ -77,6 +78,22 @@ const service = new VouchService({
 const householdAgent = new HouseholdAgent({ store, service });
 
 /*
+ * Passkeys. Browsers refuse passkeys on an IP address, so the console must be
+ * opened at http://localhost:4030 (not 127.0.0.1) to register or use one.
+ * The relying party is "localhost", and only the console's own origin may
+ * produce a signature this server accepts.
+ */
+const webPort = Number(process.env.WEB_PORT ?? 4030);
+const passkeys = new PasskeyGuard({
+  store,
+  rpId: process.env.PASSKEY_RP_ID ?? "localhost",
+  origins: (process.env.PASSKEY_ORIGINS ?? `http://localhost:${webPort}`)
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean),
+});
+
+/*
  * Exposure settings. Loopback by default; the Alexa+ bridge needs 0.0.0.0
  * behind a tunnel, and that is precisely when the host allow-list stops being
  * optional — without it, a public MCP endpoint answers to any Host header and
@@ -108,6 +125,7 @@ const { url, householdUrl } = await startVouchHttpServer(port, {
     .filter(Boolean),
   householdPort: Number(process.env.HOUSEHOLD_PORT ?? 4021),
   householdAgent,
+  passkeys,
 });
 
 console.log(`[mcp-server] Streamable HTTP  ${url}/mcp   (bound ${host})`);

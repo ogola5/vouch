@@ -506,6 +506,7 @@ export class VouchService {
         user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
         dispute: null,
         household: householdRecord,
+        household_approval: null,
       };
 
       const saved = this.store.saveVouch(vouch);
@@ -543,7 +544,12 @@ export class VouchService {
    * purchase can only be approved from the held state, so this cannot be
    * used to skip the gate on a fresh proposal.
    */
-  async approvePurchase(vouchId: string): Promise<ProposePurchaseResult> {
+  /**
+   * @param approval the household's passkey signature over "approve this
+   *   Vouch", when a passkey exists (household.ts enforces that it does).
+   *   Written onto the record so the approval can be re-verified later.
+   */
+  async approvePurchase(vouchId: string, approval: Vouch["household_approval"] = null): Promise<ProposePurchaseResult> {
     const held = this.store.getVouch(vouchId);
     if (!held) {
       throw new Error(`No vouch with id "${vouchId}"`);
@@ -586,6 +592,7 @@ export class VouchService {
         triggeredRules: held.authority.triggered_rules,
       },
       vouchId: held.vouch_id,
+      approval,
     });
   }
 
@@ -732,6 +739,7 @@ export class VouchService {
     confidenceBand?: ConfidenceLevel;
     evaluation: MandateEvaluation;
     vouchId?: string;
+    approval?: Vouch["household_approval"];
   }): Promise<ProposePurchaseResult> {
     const { mandate, session, evaluation } = args;
     const now = this.now().toISOString();
@@ -786,6 +794,7 @@ export class VouchService {
       user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
       dispute: null,
       household: args.household,
+      household_approval: args.approval ?? null,
     };
 
     const saved = this.store.saveVouch(vouch);

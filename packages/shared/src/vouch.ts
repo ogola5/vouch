@@ -122,6 +122,24 @@ export const Vouch = z.object({
    * numbers it acted on are recorded here so the Vouch can say why in terms a
    * household can check — "you get about 27 days from one; about 2 left".
    */
+  /**
+   * Set when the household approved a held purchase with its passkey: the
+   * exact signed bytes, so anyone with the public key can re-verify that THIS
+   * purchase — named in the signed challenge — was approved on the
+   * household's device. Null when approved before a passkey existed.
+   */
+  household_approval: z
+    .object({
+      credential_id: z.string(),
+      action: z.string(),
+      description: z.string(),
+      signed_at: z.string(),
+      client_data_json: z.string(),
+      authenticator_data: z.string(),
+      signature: z.string(),
+    })
+    .nullable()
+    .default(null),
   household: z
     .object({
       item_id: z.string(),

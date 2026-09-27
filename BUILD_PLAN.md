@@ -518,6 +518,18 @@ time-bound mandates, measured on ~30 cases) moves into W6.
   synthetic. No accuracy percentage is ever claimed for real homes.
 
 **W3 — Passkey approvals and a tamper-evident record (2-3 days). The spendlatch answer.**
+**W3a DONE 2026-09-28 — passkey approvals.** `packages/mcp-server/src/passkey.ts` (WebAuthn on
+`node:crypto`, SPKI from `getPublicKey()`, no CBOR, no dependency). Protected, when widening:
+approve a held purchase; PATCH a mandate that raises a limit / drops a rule / lowers the threshold /
+changes a brand / resumes / widens autonomy; move an item towards Auto or extend its end date; accept
+a hand-over. The server answers an unsigned protected call with 401 + a fresh challenge for exactly
+that action, the page signs it and retries. Trust on first use until registered; one passkey per
+household; replay, wrong action, wrong origin, no user verification, altered signature, expired
+challenge and a backwards counter are all refused (13 tests, software authenticator over HTTP).
+The approval's signed bytes are stored on the Vouch (`household_approval`) and re-verify with the
+public key alone. Console must be opened at `http://localhost:4030` — browsers refuse passkeys on
+an IP; the page says so. **Remaining: W3b, the hash-chained record.**
+
 **W3 design — AGREED WITH THE OWNER 2026-09-27.** The rule is the project's own, applied to people:
 *anything that spends money or widens the agent's authority needs a passkey; anything that narrows
 it doesn't.*

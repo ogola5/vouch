@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VouchService } from "./service.ts";
 import type { HouseholdAgent, NoticeResponse } from "./householdAgent.ts";
+import type { Autonomy, Mandate } from "@vouch/shared";
+import { PasskeyError, PasskeyRequired, type PasskeyGuard, type PasskeyProof, type ProtectedAction } from "./passkey.ts";
 
 /**
  * The HOUSEHOLD's surface, deliberately separate from the agent's MCP tools.
@@ -52,25 +54,99 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+const MODE_RANK: Record<Autonomy["mode"], number> = { remind: 0, ask: 1, auto: 2 };
+
+/** More autonomy, or the same autonomy for longer. Delivery days are not authority. */
+export function autonomyWidens(before: Autonomy, after: Autonomy): boolean {
+  if (MODE_RANK[after.mode] > MODE_RANK[before.mode]) return true;
+  if (after.mode === "auto" && before.mode === "auto" && before.until !== null) {
+    return after.until === null || after.until > before.until;
+  }
+  return false;
+}
+
 /**
- * Returns true when it handled the request. There is no authentication here
- * yet, and saying so plainly matters more than pretending otherwise: the
- * server binds to 127.0.0.1 and the household surface is trusted because it
- * is local. A real deployment needs an identity model — which is also where
- * the household multi-user story cut in BUILD_PLAN.md §2 would begin.
+ * Would this edit let the agent do something it could not do before? Only
+ * then does it need a passkey. Conservative on purpose: when unsure, it
+ * counts as widening — asking for a fingerprint once too often is a far
+ * smaller failure than letting authority widen unsigned.
+ */
+export function mandateEditWidens(before: Mandate, changes: Record<string, unknown>): boolean {
+  const c = changes.constraints as Record<string, unknown> | undefined;
+  if (c) {
+    for (const key of ["max_price", "quantity"]) {
+      const old = before.constraints[key];
+      if (typeof old === "number" && (typeof c[key] !== "number" || (c[key] as number) > old)) return true;
+    }
+    for (const key of ["preferred_brand", "fallback_brand"]) {
+      if (c[key] !== undefined && c[key] !== before.constraints[key]) return true;
+    }
+  }
+  const rules = changes.requires_approval_if as string[] | undefined;
+  if (rules && before.requires_approval_if.some((r) => !rules.includes(r))) return true;
+  const threshold = changes.confidence_threshold;
+  if (typeof threshold === "number" && threshold < before.confidence_threshold) return true;
+  if (before.status === "paused" && changes.status === "active") return true;
+  const autonomy = changes.autonomy as Partial<Autonomy> | undefined;
+  if (autonomy && autonomyWidens(before.autonomy, { ...before.autonomy, ...autonomy })) return true;
+  return false;
+}
+
+function proofFrom(body: Record<string, unknown>): PasskeyProof | undefined {
+  const p = body.passkey as PasskeyProof | undefined;
+  return p && typeof p === "object" ? p : undefined;
+}
+
+/**
+ * Returns true when it handled the request.
+ *
+ * AUTHENTICATION: the household's powers that spend money or widen the
+ * agent's authority require the household's passkey once one is registered
+ * (passkey.ts). Before that, this surface is trusted because it is local —
+ * it binds to 127.0.0.1 — and the README says so. A real deployment needs
+ * an identity model for several household members, which is where the
+ * multi-user story cut in BUILD_PLAN.md §2 would begin.
  */
 export async function handleHouseholdRequest(
   req: IncomingMessage,
   res: ServerResponse,
   service: VouchService,
   pathname: string,
-  agent?: HouseholdAgent
+  agent?: HouseholdAgent,
+  guard?: PasskeyGuard
 ): Promise<boolean> {
   const method = req.method ?? "GET";
 
   if (!pathname.startsWith(HOUSEHOLD_PREFIX)) return false;
 
+  /** Enforces the passkey for a widening action; null when none is registered yet. */
+  const requirePasskey = (action: ProtectedAction, description: string, body: Record<string, unknown>) =>
+    guard ? guard.require(action, description, proofFrom(body)) : null;
+
   try {
+    /* ---- passkeys ---- */
+    if (guard && pathname === "/household/passkey" && method === "GET") {
+      send(res, 200, { registered: guard.isRegistered(), rp_id: guard.rpId, origins: guard.origins });
+      return true;
+    }
+    if (guard && pathname === "/household/passkey/register/options" && method === "POST") {
+      send(res, 200, guard.registrationOptions());
+      return true;
+    }
+    if (guard && pathname === "/household/passkey/register" && method === "POST") {
+      const body = await readJson(req);
+      const stored = guard.register({
+        challenge_id: String(body.challenge_id),
+        credential_id: String(body.credential_id),
+        client_data_json: String(body.client_data_json),
+        authenticator_data: String(body.authenticator_data),
+        public_key: String(body.public_key),
+        algorithm: Number(body.algorithm),
+      });
+      send(res, 200, { registered: true, credential_id: stored.credential_id });
+      return true;
+    }
+
     /*
      * The household model. Loading a household and moving its clock are demo
      * controls; "we're out" / "about half left" is information the household
@@ -132,17 +208,38 @@ export async function handleHouseholdRequest(
         send(res, 400, { error: 'response must be "order", "not_yet", "snooze", "accept_promotion" or "decline_promotion"' });
         return true;
       }
-      send(res, 200, await agent.respond(decodeURIComponent(respondMatch[1]!), answer));
+      const itemId = decodeURIComponent(respondMatch[1]!);
+      if (answer.response === "accept_promotion") {
+        // Handing an item over widens authority: passkey.
+        const item = agent.pantry().find((p) => p.item_id === itemId);
+        const until = item?.settings.promotion?.until;
+        requirePasskey(
+          { kind: "accept_handover", item_id: itemId },
+          `Let your agent buy ${item?.name.toLowerCase() ?? itemId} on its own${until ? ` until ${until}` : ""}`,
+          body
+        );
+      }
+      send(res, 200, await agent.respond(itemId, answer));
       return true;
     }
     const modeMatch = ITEM_MODE_PATH.exec(pathname);
     if (agent && modeMatch && method === "POST") {
       const body = await readJson(req);
+      const itemId = decodeURIComponent(modeMatch[1]!);
       const change: Record<string, unknown> = {};
       if (body.mode !== undefined) change.mode = body.mode;
       if (body.until !== undefined) change.until = body.until;
       if (body.delivery_days !== undefined) change.delivery_days = body.delivery_days;
-      send(res, 200, agent.setItemMode(decodeURIComponent(modeMatch[1]!), change));
+      const item = agent.pantry().find((p) => p.item_id === itemId);
+      if (item?.autonomy && autonomyWidens(item.autonomy, { ...item.autonomy, ...(change as Partial<Autonomy>) })) {
+        const next = { ...item.autonomy, ...(change as Partial<Autonomy>) };
+        requirePasskey(
+          { kind: "set_autonomy", item_id: itemId, change },
+          `Let your agent buy ${item.name.toLowerCase()} on its own${next.until ? ` until ${next.until}` : ""}`,
+          body
+        );
+      }
+      send(res, 200, agent.setItemMode(itemId, change));
       return true;
     }
 
@@ -157,8 +254,16 @@ export async function handleHouseholdRequest(
     const mandateMatch = MANDATE_PATH.exec(pathname);
     if (mandateMatch && method === "PATCH") {
       const id = mandateMatch[1]!;
-      const body = await readJson(req);
-      send(res, 200, service.updateMandate(id, body));
+      const { passkey: _proof, ...changes } = await readJson(req);
+      const before = service.getMandate(id);
+      if (before && mandateEditWidens(before, changes)) {
+        requirePasskey(
+          { kind: "edit_mandate", mandate_id: id, changes },
+          `Let your agent do more for "${before.goal}"`,
+          { passkey: _proof }
+        );
+      }
+      send(res, 200, service.updateMandate(id, changes));
       return true;
     }
 
@@ -168,7 +273,14 @@ export async function handleHouseholdRequest(
       const body = await readJson(req);
 
       if (action === "approve") {
-        send(res, 200, await service.approvePurchase(vouchId!));
+        // Spends money the gate refused to spend: passkey, bound to THIS Vouch.
+        const held = service.listVouches({ limit: 200 }).find((v) => v.vouch_id === vouchId);
+        const approval = requirePasskey(
+          { kind: "approve_purchase", vouch_id: vouchId! },
+          held ? `Approve ${held.decision.product} — $${held.decision.price.toFixed(2)}` : `Approve purchase ${vouchId}`,
+          body
+        );
+        send(res, 200, await service.approvePurchase(vouchId!, approval));
         return true;
       }
 
@@ -186,6 +298,17 @@ export async function handleHouseholdRequest(
     send(res, 404, { error: `No household route for ${method} ${pathname}` });
     return true;
   } catch (error) {
+    if (error instanceof PasskeyRequired && guard) {
+      // Refuse, and hand back a fresh challenge for exactly this action: the
+      // page signs what the server names, rather than composing the action
+      // itself and possibly getting it subtly different.
+      send(res, 401, { error: error.message, needs_passkey: true, ...guard.actionChallenge(error.action, error.description) });
+      return true;
+    }
+    if (error instanceof PasskeyError) {
+      send(res, error.status, { error: error.message });
+      return true;
+    }
     const message = error instanceof Error ? error.message : String(error);
     send(res, 400, { error: message });
     return true;

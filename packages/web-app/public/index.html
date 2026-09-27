@@ -385,6 +385,7 @@
         <h3 id="hhTitle">What's running low, and what it may do about it</h3>
       </div>
       <div class="hh-controls">
+        <span class="hh-date" id="pkStatus"></span>
         <span class="hh-date" id="hhDate"></span>
         <button class="small" id="hhFwd1" title="Demo control: move the household's clock forward">+1 day</button>
         <button class="small" id="hhFwd7" title="Demo control: move the household's clock forward">+1 week</button>
@@ -1004,6 +1005,10 @@ function evidenceLine(v) {
     const arrives = h.delivery_day !== null && hh.date ? ` · arriving ${esc(niceDate(h.delivery_day))}` : "";
     parts.push(`<b>Nobody asked — your household agent did this on its own:</b> you get about ${Math.round(h.days_per_pack)} days from one and ${esc(left)}${arrives}.`);
   }
+  if (v.household_approval) {
+    const when = new Date(v.household_approval.signed_at).toLocaleString();
+    parts.push(`🔐 <b>Approved with your passkey</b> on ${esc(when)} — “${esc(v.household_approval.description)}”. The signature is kept with this record, so it can be re-checked without trusting this app.`);
+  }
   if (b) {
     const claimed = b.agent_claimed !== null && b.agent_claimed !== b.evidence ? ` The agent itself said ${b.agent_claimed.toFixed(2)}; the evidence said ${b.evidence.toFixed(2)}, and the lower one counts.` : "";
     parts.push(`<span class="meta">Evidence: ${esc(b.notes.need)} · ${esc(b.notes.product)} · ${esc(b.notes.price)}.${esc(claimed)}</span>`);
@@ -1177,8 +1182,10 @@ const household = (path, options) =>
 
 async function approve(vouchId) {
   try {
-    await household(`vouches/${encodeURIComponent(vouchId)}/approve`, { method: "POST", body: "{}" });
-    toast("Approved — the parked checkout became an order.");
+    // Approving spends money the gate refused to spend: once a passkey
+    // exists, the server asks for it, bound to this one purchase.
+    const r = await protectedCall(`vouches/${encodeURIComponent(vouchId)}/approve`, "POST", {});
+    toast(r.vouch?.household_approval ? "Approved with your passkey — the parked checkout became an order." : "Approved — the parked checkout became an order.");
     await refresh();
   } catch (e) { toast(e.message, true); }
 }
@@ -1254,7 +1261,7 @@ $("saveMandate").addEventListener("click", async () => {
   if (!body.goal) { toast("Give it a goal — that's what the agent is acting on.", true); return; }
   try {
     if (editingId) {
-      await household(`mandates/${encodeURIComponent(editingId)}`, { method: "PATCH", body: JSON.stringify(body) });
+      await protectedCall(`mandates/${encodeURIComponent(editingId)}`, "PATCH", body);
       toast("Mandate updated.");
     } else {
       await callTool("create_mandate", { ...body, authority_type: "explicit" });
@@ -1408,6 +1415,121 @@ async function chatBanner() {
     // three at once). Ask again shortly instead of settling on "no model".
     setTimeout(chatBanner, 2000);
   }
+}
+
+/* ---------- passkeys ---------- */
+
+/*
+ * The household's fingerprint, face or PIN, for anything that spends money
+ * or widens what the agent may do (approving a held purchase, raising a
+ * limit, handing an item over). The SERVER decides what needs it: a protected
+ * call answered with 401 + needs_passkey carries a fresh challenge naming the
+ * exact action, the browser signs that, and the call is retried. The page
+ * never composes the action itself, so it cannot sign something subtly
+ * different from what the server checks.
+ */
+let passkey = { registered: false, rp_id: "localhost" };
+
+const toB64url = (buf) =>
+  btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const fromB64url = (s) => {
+  const b = s.replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(b + "=".repeat((4 - (b.length % 4)) % 4)), (c) => c.charCodeAt(0));
+};
+
+async function loadPasskey() {
+  try { passkey = await api("/api/household/passkey"); } catch { /* optional surface */ }
+  renderPasskey();
+}
+
+function renderPasskey() {
+  const el = $("pkStatus");
+  if (passkey.registered) {
+    el.innerHTML = `<span title="Approving held purchases, raising limits and handing items over need your fingerprint, face or PIN">🔐 Approvals need your passkey</span>`;
+    return;
+  }
+  // Browsers refuse passkeys on an IP address — say so instead of failing mysteriously.
+  if (location.hostname !== passkey.rp_id) {
+    const url = `${location.protocol}//${passkey.rp_id}:${location.port}`;
+    el.innerHTML = `<a href="${esc(url)}" title="Browsers only allow passkeys on a named site, not an IP address">Open ${esc(url)} to add a passkey</a>`;
+    return;
+  }
+  el.innerHTML = `<button class="small" id="pkSetup">🔐 Protect approvals with a passkey</button>`;
+  document.getElementById("pkSetup").addEventListener("click", setUpPasskey);
+}
+
+async function setUpPasskey() {
+  try {
+    const o = await household("passkey/register/options", { method: "POST", body: "{}" });
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: fromB64url(o.challenge),
+        rp: o.rp,
+        user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
+        pubKeyCredParams: o.pubKeyCredParams,
+        authenticatorSelection: o.authenticatorSelection,
+        attestation: "none",
+        timeout: o.timeout,
+      },
+    });
+    const r = cred.response;
+    await household("passkey/register", {
+      method: "POST",
+      body: JSON.stringify({
+        challenge_id: o.challenge_id,
+        credential_id: toB64url(cred.rawId),
+        client_data_json: toB64url(r.clientDataJSON),
+        authenticator_data: toB64url(r.getAuthenticatorData()),
+        public_key: toB64url(r.getPublicKey()),
+        algorithm: r.getPublicKeyAlgorithm(),
+      }),
+    });
+    toast("Passkey added. Approvals and hand-overs now need it.");
+  } catch (e) {
+    toast(e.name === "NotAllowedError" ? "Passkey setup was cancelled." : e.message, true);
+  }
+  await loadPasskey();
+}
+
+/** Signs exactly the challenge the server issued for one action. */
+async function signFor(c) {
+  const cred = await navigator.credentials.get({
+    publicKey: {
+      challenge: fromB64url(c.challenge),
+      rpId: c.rp_id,
+      allowCredentials: c.allow_credentials.map((id) => ({ type: "public-key", id: fromB64url(id) })),
+      userVerification: "required",
+      timeout: 120000,
+    },
+  });
+  const r = cred.response;
+  return {
+    challenge_id: c.challenge_id,
+    credential_id: toB64url(cred.rawId),
+    client_data_json: toB64url(r.clientDataJSON),
+    authenticator_data: toB64url(r.authenticatorData),
+    signature: toB64url(r.signature),
+  };
+}
+
+/** A household call that may need the passkey: tries once, signs if asked, retries. */
+async function protectedCall(path, method, body) {
+  const send = (b) => fetch(`/api/household/${path}`, {
+    method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(b ?? {}),
+  });
+  let res = await send(body);
+  let json = await res.json().catch(() => ({}));
+  if (res.status === 401 && json.needs_passkey) {
+    toast(`Confirm with your passkey: ${json.description}`);
+    let proof;
+    try { proof = await signFor(json); } catch (e) {
+      throw new Error(e.name === "NotAllowedError" ? "Not confirmed — nothing changed." : e.message);
+    }
+    res = await send({ ...(body ?? {}), passkey: proof });
+    json = await res.json().catch(() => ({}));
+  }
+  if (!res.ok) throw new Error(json.error || `${path} → ${res.status}`);
+  return json;
 }
 
 /* ---------- the household ---------- */
@@ -1596,8 +1718,9 @@ function renderHousehold() {
     $("hhLog").hidden = true;
   }
 
-  const post = (path, body) =>
-    household(path, { method: "POST", body: JSON.stringify(body ?? {}) });
+  // Every household action goes through protectedCall: the server decides
+  // which ones widen authority and ask for the passkey.
+  const post = (path, body) => protectedCall(path, "POST", body);
   const run = async (fn) => {
     try { await fn(); } catch (e) { toast(e.message, true); }
     await refresh();
@@ -1679,6 +1802,7 @@ let retrying = false;
 
 refresh();
 chatBanner();
+loadPasskey();
 </script>
 </body>
 </html>

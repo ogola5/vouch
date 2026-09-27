@@ -170,6 +170,23 @@ describe("the console page holds together", () => {
     assert.match(needs, /Math\.max\(n\.delivery_day, hh\.today \+ lead\)/);
   });
 
+  it("lets the server decide what needs a passkey, and signs only what it names", () => {
+    // The page must not compose protected actions itself: it signs the
+    // challenge the server returned with its 401, then retries.
+    const code = withoutComments(scriptBody());
+    const call = /async function protectedCall\(path, method, body\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.match(call, /res\.status === 401 && json\.needs_passkey/);
+    assert.match(call, /signFor\(json\)/);
+    // Approving a held purchase and editing a mandate both go through it.
+    assert.match(code, /protectedCall\(`vouches\/\$\{encodeURIComponent\(vouchId\)\}\/approve`/);
+    assert.match(code, /protectedCall\(`mandates\//);
+  });
+
+  it("explains, rather than fails, when opened on an IP address", () => {
+    // Browsers refuse passkeys on 127.0.0.1; the page points to localhost.
+    assert.match(scriptBody(), /Browsers only allow passkeys on a named site/);
+  });
+
   it("can say 'nobody asked' on the record", () => {
     assert.match(scriptBody(), /Nobody asked — your household agent did this on its own/);
   });

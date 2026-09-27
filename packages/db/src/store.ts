@@ -361,6 +361,20 @@ export class VouchStore {
       .run(key, value);
   }
 
+  savePasskey(credentialId: string, doc: object): void {
+    this.db
+      .prepare(
+        `INSERT INTO passkeys (credential_id, doc) VALUES (?, ?)
+         ON CONFLICT (credential_id) DO UPDATE SET doc = excluded.doc`
+      )
+      .run(credentialId, JSON.stringify(doc));
+  }
+
+  listPasskeys(): unknown[] {
+    const rows = this.db.prepare(`SELECT doc FROM passkeys ORDER BY credential_id`).all() as { doc: string }[];
+    return rows.map((r) => JSON.parse(r.doc) as unknown);
+  }
+
   /** Forgets the household model entirely — "forget this household". Vouches and mandates are untouched. */
   clearHousehold(): void {
     this.transaction(() => {
