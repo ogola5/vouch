@@ -422,7 +422,55 @@ it makes the agent autonomous rather than prompted. *Risk:* a new package plus a
 gate and its tests are unchanged; if it overruns, ship the model + manual "fast-forward" trigger
 without the per-category trust ladder.
 
+**W2 design — AGREED WITH THE OWNER 2026-09-27.** *Numbers from arithmetic, words from the model.*
+- **Forecast is plain statistics, not AI.** Per item: days one pack lasts this household, with
+  uncertainty. Starts from a labelled category default worth ~2 refills, or from the household's
+  answer to "how often do you buy this?" (asked once; default used if unanswered). Each refill is
+  one data point: a cycle that ended in "we're out" is exact; one that ended in an agent purchase
+  is "lasted at least this long" (censored) — treating these differently keeps it honest.
+- **When to buy:** propose when P(run out before a delivery would arrive) ≥ **1 in 5** (owner's
+  choice). Household-adjustable in words: "never let me run out" (1 in 20) / "keep stock low" (1 in 3).
+- **Signals used:** purchase history; what the household says ("we're out", "plenty left",
+  "guests this weekend"); one question only when it would change a decision; delivery arrival via
+  the existing Ring correlation. **Never used:** in-home cameras or microphones, or anything about
+  a member beyond what the household states. Dash Replenishment named as the future sensor input.
+- **Nova 2 Lite's only jobs:** turn household statements into structured events (echoed back —
+  "Got it, dish soap marked as run out today" — so a misread is caught) and write explanations
+  from the record's numbers (W6).
+- **Confidence is evidence-derived for EVERY proposal, chat included** (adopted from external
+  review, stronger than first drafted): need certainty × usual product × price vs history. The
+  model's own number is recorded as `agent_claimed_confidence` and shown beside it ("agent said
+  0.94, evidence says 0.71") but the gate never reads it. `evaluateProposal` and its "Reviewed and
+  kept" contract are unchanged — only the source of the number changes.
+- **Demo household (owner-agreed):** detergent, dish soap, paper towels, toilet paper, dog food, coffee.
+- **Ethics, as design rules:** collect only purchases + what the household says; everything the
+  model believes is visible and editable; tracking opt-in per item, "forget this item" deletes its
+  history; recommendations never shaped by sponsorship (a judge may raise Alexa+ agentic ads);
+  no upselling — larger or deal-timed buys only at trust level 4, which the household opts into.
+- **Accuracy is measured, not claimed:** extend `packages/eval` with households of known true usage
+  plus noise (irregular use, guests), comparing this forecast against calendar restocking
+  (Scheduled Actions-style "every month") on run-outs, early buys and days-of-error. Labelled
+  synthetic. No accuracy percentage is ever claimed for real homes.
+
 **W3 — Passkey approvals and a tamper-evident record (2-3 days). The spendlatch answer.**
+**W3 design — AGREED WITH THE OWNER 2026-09-27.** The rule is the project's own, applied to people:
+*anything that spends money or widens the agent's authority needs a passkey; anything that narrows
+it doesn't.*
+
+| Action | Passkey |
+|---|---|
+| Approve a held purchase | **yes** |
+| Raise a limit, loosen a threshold, raise an item's trust level | **yes** |
+| Dispute; pause; "stop tracking"; decline ("keep blocked") | no — only narrows |
+| "We're out" / "plenty left" | no — information, not authority |
+
+The challenge **names the exact action** ("approve Vouch v_123, Brand C, $27.80, expires in 2
+min") so a signature covers *what* was approved, not only *who* — the idea behind AP2's Cart
+Mandate. The signature is stored on the Vouch and re-verifiable by anyone. Each Vouch carries the
+previous one's hash; each signed approval also covers the chain's latest link, so tampering is
+detectable without trusting our own database. Voice path: "approve it on your phone" — stated,
+not faked. Action-bound challenges also close the localhost cross-site request risk (verify how
+exposed it actually is before claiming it).
 Household actions (approve, dispute, mandate edit) require a **passkey** (WebAuthn: phone
 fingerprint/face, verified with `node:crypto`, no new dependency; localhost is a secure context so
 it works in the demo). Each approval stores the passkey's signature on the Vouch. Every Vouch
@@ -439,6 +487,27 @@ events through a price-trigger-only policy (Auto Buy as Amazon documents it) and
 and show the difference: purchases plain auto-buy would have made that Vouch held or timed
 differently. *Done when:* the panel renders from a real replay, not hard-coded numbers.
 *Reason:* answers "why aren't Amazon's existing controls enough?" with data, not argument.
+
+**W4b — Proof mode, trace and the security matrix (1½ days). Adopted from an external review
+2026-09-27** (numeric self-scores in that review rejected per CLAUDE.md §10; its "0.85 → 0.92" is
+stale — the step is +0.03; its "trust 92% → 99%" inverted the meaning of the threshold and is not
+used). Organised around one question — *what claim are we making, and what code, test and UI prove
+it?*
+- **The gate reports every check it ran**, not only the failed ones (additive field on
+  `MandateEvaluation`). Console panel "How it decided": the UCP steps `created → ready_for_complete
+  → ✋ gate → no order`, and a PASS/FAIL row per rule.
+- **Trace on every Vouch:** the MCP request, every UCP `Request-Id` and `Idempotency-Key`, the
+  session, the mandate. One click shows the chain.
+- **Every attempted action leaves a record:** a new `Failed` status (merchant down, unknown
+  product), so errors are visible rather than silent. **Decline ("keep blocked")** cancels the
+  parked UCP session → `Cancelled`, "declined by household".
+- **`test/security-matrix.test.ts`:** agent raises a limit / approves itself / calls checkout /
+  sends a fake price; unknown rule; paused mandate; quantity, price and confidence over; duplicate
+  request; malformed tool input; merchant down → each asserted, and the matrix printed as "N/N
+  blocked". Most cases exist already, scattered; new: merchant down fails closed, idempotency,
+  malformed input.
+- **Failure injection, trimmed:** merchant down, doorbell corroborated/unconfirmed, model failure.
+- **Agent can / cannot** list and the **claim → code → test → UI** table go into the README (W9).
 
 **W5 — Demo completeness (1½ days):**
 - **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
@@ -478,15 +547,16 @@ limit. Developer feedback: the Alexa+ add-on access wall (§7). **Submit 2026-10
 
 | Dates | Work |
 |---|---|
-| Sep 28 | W1 |
-| Sep 29 – Oct 2 | W2 |
-| Oct 3 – 5 | W3 |
-| Oct 6 | W4 |
-| Oct 7 – 8 | W5 (study mode first, so W7 can start) |
-| Oct 8 – 13 | W7 (owner, in parallel) |
-| Oct 9 | W6 |
-| Oct 10 | W8 |
-| Oct 11 – 13 | W9, buffer, fixes — **freeze Oct 13** |
+| Sep 27 | W1 ✅ |
+| Sep 28 – Oct 1 | W2 (forecast + its simulation first, then autonomy, then the pantry view) |
+| Oct 2 – 4 | W3 (with the decline action) |
+| Oct 5 – 6 | W4b (proof mode, trace, security matrix, failure injection) |
+| Oct 7 | W4 |
+| Oct 8 – 9 | W5 (study mode first, so W7 can start) |
+| Oct 9 – 13 | W7 (owner, in parallel) |
+| Oct 10 | W6 |
+| Oct 11 | W8 |
+| Oct 12 – 13 | W9, fixes — **freeze Oct 13**. The buffer is now ~1 day (W4b took the rest); if W2 or W3 overruns, their stated fallbacks apply before anything else is cut. |
 | Oct 14 – 18 | Video |
 | Oct 19 – 22 | Writeup, feedback, submit |
 
