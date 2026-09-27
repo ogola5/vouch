@@ -618,6 +618,18 @@ saving — a real order with no record at all. It now falls back to "unconfirmed
 Noticed, not scoped: with the store down, an Auto item records one Failed attempt per day until it
 recovers — every attempt is a record, by design, but a back-off would be kinder.
 
+**W4b-3 DONE 2026-09-28 — W4b COMPLETE.** `packages/mcp-server/test/security-matrix.test.ts`: 20
+attacks against the real stack over MCP (self-approval, direct checkout, raising a limit, household
+powers via the MCP port, smuggled autonomy and forecast context, a named price, inflated confidence,
+price/brand/quantity/paused/unknown-rule/unprompted-on-Ask, malformed input, duplicate create,
+double approval, store outage, unsigned widening, database edit) — each records what actually
+happened and the matrix prints **20/20 blocked**; the final test fails if any gets through. Failure
+switches (labelled simulations) in the console: store down (merchant answers 503 → Failed records,
+no orders), model down (chat says so; gate, record and household agent carry on), doorbell next
+orders corroborated / unconfirmed — which closes the §6 "console doorbell never scripted" item.
+Found on the way: `/api/state` fetched the catalog, so a store outage took the whole console —
+including the household's record — down with it; it now degrades to `store_down: true`.
+
 **W5 — Demo completeness (1½ days):**
 - **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
   visibly tightens; the tour uses it.
@@ -872,8 +884,8 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
       serving a half-reloaded file, so every catalog search errored. Same class as the stale
       `mcp-server` in §7. Workaround: `fuser -k 4010/tcp 4020/tcp 4021/tcp 4030/tcp`. A real fix
       is a `dev:stop` script or a supervisor that owns its children.
-    - **The console's doorbell is never scripted, so every order reads `unconfirmed` (noticed
-      2026-09-27).** Honest, and the page says so, but the demo script wants one `corroborated`
+    - **~~The console's doorbell is never scripted~~ — DONE in §3b W4b-3 (doorbell switch in demo
+      controls). (noticed 2026-09-27).** Honest, and the page says so, but the demo script wants one `corroborated`
       Vouch on screen. Needs a demo-control route onto `MockRingProvider.scriptOutcome`.
     - **~~An approved purchase and a purchase allowed by a raised limit look identical in the
       console~~ — DONE 2026-09-27 in the console redesign: "Bought · you approved" badge, and the

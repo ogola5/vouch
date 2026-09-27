@@ -285,6 +285,17 @@ export async function handleHouseholdRequest(
       send(res, 200, { ...report, ok: problems.length === 0, problems, approvals_checked: approvals });
       return true;
     }
+    if (pathname === "/household/demo/doorbell" && method === "POST") {
+      // DEMO CONTROL: what the simulated doorbell reports for new orders.
+      const body = await readJson(req);
+      if (body.outcome !== "corroborated" && body.outcome !== "unconfirmed") {
+        send(res, 400, { error: 'outcome must be "corroborated" or "unconfirmed"' });
+        return true;
+      }
+      service.setDemoDoorbell(body.outcome);
+      send(res, 200, { outcome: body.outcome });
+      return true;
+    }
     if (pathname === "/household/demo/tamper" && method === "POST") {
       // DEMO CONTROL: edit an old record the way someone with database access
       // might, so the console can show it being caught. Named as a demo.

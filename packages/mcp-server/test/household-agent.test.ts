@@ -323,6 +323,27 @@ describe("modes: what the household has handed over, per item", () => {
   });
 });
 
+describe("the simulated doorbell", () => {
+  it("can show a corroborated delivery — and refuses to be set when the doorbell is real", async () => {
+    const r = rig();
+    r.service.setDemoDoorbell("corroborated");
+    const { actions } = await r.agent.advance(3);
+    const bought = actions.find((a) => a.kind === "proposed" && a.outcome === "completed")!;
+    assert.ok(bought && bought.kind === "proposed");
+    const vouch = r.service.listVouches({ limit: 50 }).find((v) => v.vouch_id === bought.vouch_id)!;
+    assert.equal(vouch.evidence.physical.correlation_status, "corroborated");
+    assert.equal(vouch.evidence.physical.event_type, "motion_detected", "motion at the door — never 'delivered'");
+
+    const real = new VouchService({
+      store: VouchStore.open(":memory:"),
+      merchant: new RecordingMerchant(),
+      reasoning: new RuleBasedReasoningProvider(),
+      physicalEvidence: { correlateDelivery: async () => ({ ring_event_id: null, correlation_status: "unconfirmed", event_type: null, classification: null }) },
+    });
+    assert.throws(() => real.setDemoDoorbell("corroborated"), /doorbell is real/);
+  });
+});
+
 describe("the agent's opinion cannot raise the number the gate compares", () => {
   it("caps a claimed 0.99 at the evidence for a brand the household never approved", async () => {
     const r = rig();

@@ -287,6 +287,40 @@ describe("the console cannot misreport the gate", () => {
   });
 });
 
+describe("simulated failures leave the console standing", () => {
+  const post = (path: string, body: unknown) =>
+    fetch(`${web.url}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  it("with the store down, the record still loads and says so", async () => {
+    await post("/api/demo/outage", { down: true });
+    try {
+      const state = await get<{ store_down: boolean; vouches: unknown[]; catalog: unknown[] }>("/api/state");
+      assert.equal(state.store_down, true);
+      assert.ok(Array.isArray(state.vouches), "the household's record must not disappear with the store");
+      assert.equal((await get<{ store_down: boolean }>("/api/demo/status")).store_down, true);
+    } finally {
+      await post("/api/demo/outage", { down: false });
+    }
+    assert.equal((await get<{ store_down: boolean }>("/api/state")).store_down, false);
+  });
+
+  it("with the model down, the chat says so plainly while the gate still works", async () => {
+    await post("/api/demo/model", { down: true });
+    try {
+      const status = (await get<{ chat: { status: string } }>("/api/health")).chat.status;
+      if (status === "ready") {
+        const r = await post("/api/chat", { message: "hello" });
+        const body = (await r.json()) as { error: string };
+        assert.match(body.error, /simulated outage/);
+      }
+      const state = await get<{ catalog: unknown[] }>("/api/state");
+      assert.ok(state.catalog.length > 0, "the rest of the console carries on");
+    } finally {
+      await post("/api/demo/model", { down: false });
+    }
+  });
+});
+
 describe("the household panel reaches the household agent through the page", () => {
   // Last in the file on purpose: loading a household sets the system clock
   // to the household's, which the earlier tests do not expect.

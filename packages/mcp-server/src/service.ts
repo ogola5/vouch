@@ -832,6 +832,19 @@ export class VouchService {
   verifyLedger(): LedgerReport {
     return this.store.verifyLedger();
   }
+  /**
+   * DEMO CONTROL: what the simulated doorbell reports for new orders. Only
+   * the mock provider supports it; with RING_MODE=real this refuses, because
+   * a real doorbell's evidence is not something a button may decide.
+   */
+  setDemoDoorbell(outcome: "corroborated" | "unconfirmed"): void {
+    const ring = this.physicalEvidence as { setDefaultOutcome?: (o: "corroborated" | "unconfirmed") => void };
+    if (typeof ring.setDefaultOutcome !== "function") {
+      throw new Error("The doorbell is real (RING_MODE=real); its evidence cannot be set by a demo control.");
+    }
+    ring.setDefaultOutcome(outcome);
+  }
+
   /** DEMO CONTROL: see VouchStore.tamperForDemo. */
   tamperForDemo(vouchId: string, price: number): void {
     this.store.tamperForDemo(vouchId, price);

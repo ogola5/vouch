@@ -505,6 +505,7 @@
           One Vouch per action: bought, held or disputed. Each shows the chain from your mandate
           to the checkout, the order and the doorstep.
         </p>
+        <div id="storeStatus"></div>
         <div id="recordStatus"></div>
         <div id="pending"></div>
         <div id="vouches"><div class="empty">loading…</div></div>
@@ -528,6 +529,18 @@
 
     <div class="subhead">The store — change a price and the agent has to react to a number it didn't choose</div>
     <div class="grid" id="catalog"><div class="empty">loading…</div></div>
+
+    <div class="subhead">Simulate failures — Vouch should fail closed and say so</div>
+    <p class="hint" style="margin-top:0">
+      Each switch is a simulation. The store going down should mean no order and a Failed record;
+      the model going down should leave the gate, the record and the household agent working.
+    </p>
+    <div class="actions" style="margin-top:0" id="failSwitches">
+      <button class="small" id="failStore">Store: up</button>
+      <button class="small" id="failModel">Model: up</button>
+      <button class="small" id="bellCorroborated">Doorbell: next orders corroborated</button>
+      <button class="small" id="bellUnconfirmed">Doorbell: next orders unconfirmed</button>
+    </div>
 
     <div class="subhead">The record — prove it cannot be quietly rewritten</div>
     <p class="hint" style="margin-top:0">
@@ -1655,6 +1668,43 @@ async function loadRecord() {
     <ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul></div>`;
 }
 
+/* ---------- simulated failures ---------- */
+
+let failures = { store_down: false, model_down: false };
+
+async function loadFailures() {
+  try { failures = await api("/api/demo/status"); } catch { /* optional */ }
+  $("failStore").textContent = failures.store_down ? "Store: DOWN (simulated) — bring it back" : "Store: up — take it down";
+  $("failModel").textContent = failures.model_down ? "Model: DOWN (simulated) — bring it back" : "Model: up — take it down";
+  $("failStore").classList.toggle("primary", failures.store_down);
+  $("failModel").classList.toggle("primary", failures.model_down);
+  $("storeStatus").innerHTML = failures.store_down
+    ? `<div class="record-bad"><b>The store is down (simulated).</b> Any purchase now fails closed: no order, and a Failed record saying why. The record and everything below still work.</div>`
+    : "";
+}
+
+const demoPost = (path, body) =>
+  api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+$("failStore").addEventListener("click", async () => {
+  try { await demoPost("/api/demo/outage", { down: !failures.store_down }); } catch (e) { toast(e.message, true); }
+  await refresh();
+});
+$("failModel").addEventListener("click", async () => {
+  try { await demoPost("/api/demo/model", { down: !failures.model_down }); } catch (e) { toast(e.message, true); }
+  await refresh();
+});
+for (const [id, outcome] of [["bellCorroborated", "corroborated"], ["bellUnconfirmed", "unconfirmed"]]) {
+  $(id).addEventListener("click", async () => {
+    try {
+      await household("demo/doorbell", { method: "POST", body: JSON.stringify({ outcome }) });
+      toast(outcome === "corroborated"
+        ? "Simulated doorbell: new orders will show motion at the door inside the delivery window — correlation, never proof."
+        : "Simulated doorbell: new orders will show no event yet.");
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
 $("tamperBtn").addEventListener("click", async () => {
   try {
     const r = await household("demo/tamper", { method: "POST", body: "{}" });
@@ -1924,6 +1974,7 @@ async function refresh() {
     await refreshHousehold();
     renderCatalog(); renderMandates(); renderSelectors(); renderPending(); renderVouches(); renderTour();
     await loadRecord();
+    await loadFailures();
   } catch (e) {
     $("dot").className = "dot down";
     $("statusText").textContent = "reconnecting…";

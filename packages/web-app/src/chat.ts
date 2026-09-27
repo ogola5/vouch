@@ -88,10 +88,23 @@ export class ChatSession {
     return { status: "ready", detail: "", model };
   }
 
+  /**
+   * DEMO CONTROL: pretend the model provider is down, to show the console
+   * degrading honestly — the chat says so plainly, and the gate, the record
+   * and the household agent carry on, because none of them needs a model.
+   */
+  modelDown = false;
+
   async send(message: string): Promise<ChatTurn> {
     const { status, detail } = this.status();
     if (status === "unconfigured") {
       throw new Error(detail);
+    }
+    if (this.modelDown) {
+      throw new Error(
+        "The model is unavailable right now (simulated outage — demo control). Nothing below is affected — " +
+          "the gate, your record and your household agent don't need the model."
+      );
     }
 
     if (!this.agent) {

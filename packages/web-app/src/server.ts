@@ -82,9 +82,32 @@ export function createWebApp(options: WebAppOptions): {
       const [mandates, vouches, catalog] = await Promise.all([
         bridge.callJson<unknown[]>("list_mandates"),
         bridge.callJson<unknown[]>("list_vouches", { limit: 50 }),
-        merchant.catalog(),
+        // The store being down must not take the household's record down
+        // with it: the console is most needed exactly when something failed.
+        merchant.catalog().catch(() => null),
       ]);
-      sendJson(res, 200, { mandates, vouches, catalog: catalog.products, ok: true });
+      sendJson(res, 200, { mandates, vouches, catalog: catalog?.products ?? [], store_down: catalog === null, ok: true });
+      return;
+    }
+
+    /*
+     * DEMO CONTROLS for failure injection — each a simulation, labelled so on
+     * the page: the store going down, and the model going down. (The doorbell
+     * switch lives on the household surface, beside the Ring provider.)
+     */
+    if (method === "GET" && path === "/api/demo/status") {
+      sendJson(res, 200, { store_down: await merchant.outage(), model_down: chat.modelDown });
+      return;
+    }
+    if (method === "POST" && path === "/api/demo/outage") {
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await merchant.setOutage(body.down === true));
+      return;
+    }
+    if (method === "POST" && path === "/api/demo/model") {
+      const body = await readJsonBody(req);
+      chat.modelDown = body.down === true;
+      sendJson(res, 200, { down: chat.modelDown });
       return;
     }
 

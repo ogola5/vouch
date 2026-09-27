@@ -213,6 +213,15 @@ describe("the console page holds together", () => {
     assert.match(code, /Failed — nothing bought/);
   });
 
+  it("labels every failure switch as a simulation", () => {
+    assert.match(html, /Simulate failures/);
+    const code = withoutComments(scriptBody());
+    assert.match(code, /DOWN \(simulated\)/);
+    assert.match(code, /The store is down \(simulated\)/);
+    // The doorbell switch must keep the honest wording.
+    assert.match(code, /correlation, never proof/);
+  });
+
   it("can say 'nobody asked' on the record", () => {
     assert.match(scriptBody(), /Nobody asked — your household agent did this on its own/);
   });

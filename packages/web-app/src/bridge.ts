@@ -107,6 +107,26 @@ export class MerchantDemoClient {
     return (await response.json()) as { products: unknown[] };
   }
 
+  /** DEMO CONTROL: switch the merchant's simulated outage on or off. */
+  async setOutage(down: boolean): Promise<{ down: boolean }> {
+    const response = await fetch(`${this.baseUrl}/demo/outage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ down }),
+    });
+    if (!response.ok) throw new Error(`Merchant outage control returned ${response.status}`);
+    return (await response.json()) as { down: boolean };
+  }
+
+  async outage(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/demo/outage`);
+      return response.ok ? ((await response.json()) as { down: boolean }).down : true;
+    } catch {
+      return true; // unreachable counts as down
+    }
+  }
+
   async setPrice(productId: string, price: number): Promise<unknown> {
     const response = await fetch(`${this.baseUrl}/demo/price`, {
       method: "POST",

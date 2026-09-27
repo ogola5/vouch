@@ -75,6 +75,13 @@ export function createMerchantServer(options: MerchantServerOptions = {}): {
   merchant: Merchant;
 } {
   const merchant = options.merchant ?? new Merchant();
+  /**
+   * DEMO CONTROL — a simulated outage. While on, every UCP and catalog call
+   * answers 503, so the demo can show Vouch failing CLOSED: no order, and a
+   * Failed record saying why. Not part of UCP; lives under /demo like the
+   * price lever.
+   */
+  let outage = false;
 
   const server = createServer((req, res) => {
     handle(req, res).catch((error: unknown) => {
@@ -92,6 +99,21 @@ export function createMerchantServer(options: MerchantServerOptions = {}): {
     const path = url.pathname;
     const method = req.method ?? "GET";
     const baseUrl = options.baseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+
+    if (method === "POST" && path === "/demo/outage") {
+      const body = (await readJsonBody(req)) as { down?: unknown };
+      outage = body.down === true;
+      send(res, 200, { down: outage });
+      return;
+    }
+    if (method === "GET" && path === "/demo/outage") {
+      send(res, 200, { down: outage });
+      return;
+    }
+    if (outage && (path.startsWith("/ucp/") || path === "/catalog")) {
+      send(res, 503, { error: { code: "unavailable", message: "merchant unavailable (simulated outage — demo control)" } });
+      return;
+    }
 
     if (method === "GET" && path === "/.well-known/ucp") {
       send(res, 200, merchant.profile(baseUrl));
