@@ -608,6 +608,16 @@ decision between them — a held purchase's trace stops at the gate. The console
 panel shows both on every record. Remaining in W4b: **W4b-2** Failed / Declined records and "keep
 blocked"; **W4b-3** security matrix + failure injection.
 
+**W4b-2 DONE 2026-09-28.** A failure before any order exists becomes a `Failed` Vouch
+(`failure: {stage: checkout|order, message}`, `decision.price` null when never priced, the trace up to
+an `error` step, the gate's checks if it got that far); the error thrown back names the record.
+`declinePurchase` ("Keep blocked") cancels the parked UCP session and records `declined_by_household`;
+no passkey; an Auto item then rests 3 days rather than re-proposing. **Found by writing the tests:**
+a doorbell provider that errors after an order was placed made `writeCompletedVouch` throw before
+saving — a real order with no record at all. It now falls back to "unconfirmed" and always writes.
+Noticed, not scoped: with the store down, an Auto item records one Failed attempt per day until it
+recovers — every attempt is a record, by design, but a back-off would be kinder.
+
 **W5 — Demo completeness (1½ days):**
 - **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
   visibly tightens; the tour uses it.

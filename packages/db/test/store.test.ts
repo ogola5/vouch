@@ -60,6 +60,7 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     household: null,
     household_approval: null,
     trace: null,
+    failure: null,
   });
 }
 

@@ -624,7 +624,8 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 const escapeHtml = esc;
-function money(n) { return "$" + Number(n).toFixed(2); }
+// A Failed attempt may never have reached a priced checkout: say so, never "$0.00".
+function money(n) { return n === null || n === undefined ? "price unknown" : "$" + Number(n).toFixed(2); }
 
 /* ---------- household language ---------- */
 
@@ -997,7 +998,10 @@ function statusBadge(v) {
     return '<span class="badge ok">Bought · you approved</span>';
   if (s === "Complete") return '<span class="badge ok">Bought</span>';
   if (s === "PendingApproval") return '<span class="badge hold">Held for you</span>';
+  if (s === "Cancelled" && (v.decision.reason ?? []).includes("declined_by_household"))
+    return '<span class="badge plain">Kept blocked by you</span>';
   if (s === "Cancelled") return '<span class="badge bad">Cancelled</span>';
+  if (s === "Failed") return '<span class="badge bad">Failed — nothing bought</span>';
   return `<span class="badge plain">${esc(s)}</span>`;
 }
 
@@ -1060,6 +1064,8 @@ const STEP_NAME = {
   update: "Address, delivery and payment set",
   gate: "Vouch checked it against your mandate",
   household_approval: "You approved it",
+  household_decline: "You kept it blocked",
+  error: "It went wrong here",
   complete: "Order placed",
   cancel: "Checkout cancelled",
 };
@@ -1099,12 +1105,19 @@ function chain(v) {
   const rules = v.authority.triggered_rules ?? [];
   const s = v.action.status;
   const approved = (v.decision.reason ?? []).includes("approved_by_household");
-  const gate = rules.length === 0
-    ? { cls: "ok", val: "passed" }
-    : approved ? { cls: "ok", val: "held → you said yes" } : { cls: "hold", val: "held" };
+  const declined = (v.decision.reason ?? []).includes("declined_by_household");
+  const gate = s === "Failed" && !v.authority.checks
+    ? { cls: "none", val: "never reached" }
+    : rules.length === 0
+      ? { cls: "ok", val: "passed" }
+      : approved ? { cls: "ok", val: "held → you said yes" }
+      : declined ? { cls: "hold", val: "held → you said no" }
+      : { cls: "hold", val: "held" };
   const session = s === "Complete"
     ? { cls: "ok", val: "completed" }
     : s === "PendingApproval" ? { cls: "hold", val: "parked at ready_for_complete" }
+    : s === "Failed" ? { cls: "hold", val: `failed at the ${v.failure?.stage ?? "checkout"} step` }
+    : declined ? { cls: "none", val: "cancelled — kept blocked" }
     : { cls: "none", val: s.toLowerCase() };
   const order = v.evidence.digital.order_id;
   const ring = v.evidence.physical.correlation_status;
@@ -1129,11 +1142,13 @@ function renderPending() {
         ${(v.authority.triggered_rules ?? []).map((r) => `<span class="chip">${esc(ruleText(r))}</span>`).join("")}
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="small" data-explain="${v.vouch_id}">Why?</button>
+          <button class="small" data-decline="${v.vouch_id}">Keep blocked</button>
           <button class="small primary" data-approve="${v.vouch_id}">Approve</button>
         </span>
       </div>`).join("")}
   </div>`;
   $("pending").querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => approve(b.dataset.approve)));
+  $("pending").querySelectorAll("[data-decline]").forEach((b) => b.addEventListener("click", () => decline(b.dataset.decline)));
   $("pending").querySelectorAll("[data-explain]").forEach((b) => b.addEventListener("click", () => {
     document.getElementById(`vouch-${b.dataset.explain}`)?.scrollIntoView({ block: "center" });
     explain(b.dataset.explain);
@@ -1169,11 +1184,12 @@ function renderVouches() {
         ${evidenceLine(v)}
         ${howItDecided(v)}
         ${rules ? `<div style="margin-top:8px"><span class="meta">Stopped by:</span> ${rules}</div>` : ""}
+        ${v.failure ? `<div class="meta" style="margin-top:8px"><b>Why it failed:</b> ${esc(v.failure.message)}. Nothing was bought.</div>` : ""}
         ${d ? `<div class="meta" style="margin-top:8px">You disputed it: “${esc(d.reason ?? "no reason given")}”${
           d.confidence_threshold_delta ? ` — threshold <b class="up-arrow">+${d.confidence_threshold_delta.toFixed(2)}</b>` : ""}</div>` : ""}
         <div class="actions">
           <button class="small" data-explain="${v.vouch_id}">Why?</button>
-          ${v.action.status === "PendingApproval" ? `<button class="small primary" data-approve="${v.vouch_id}">Approve</button>` : ""}
+          ${v.action.status === "PendingApproval" ? `<button class="small" data-decline="${v.vouch_id}">Keep blocked</button> <button class="small primary" data-approve="${v.vouch_id}">Approve</button>` : ""}
           ${v.action.status === "Complete" && !d ? `<button class="small" data-dispute-open="${v.vouch_id}">I didn't want that</button>` : ""}
         </div>
         <div data-dispute-slot="${v.vouch_id}"></div>
@@ -1186,6 +1202,7 @@ function renderVouches() {
 
   el.querySelectorAll("[data-explain]").forEach((b) => b.addEventListener("click", () => explain(b.dataset.explain)));
   el.querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => approve(b.dataset.approve)));
+  el.querySelectorAll("[data-decline]").forEach((b) => b.addEventListener("click", () => decline(b.dataset.decline)));
   el.querySelectorAll("[data-dispute-open]").forEach((b) => b.addEventListener("click", () => openDispute(b.dataset.disputeOpen)));
 }
 
@@ -1260,6 +1277,15 @@ async function approve(vouchId) {
     // exists, the server asks for it, bound to this one purchase.
     const r = await protectedCall(`vouches/${encodeURIComponent(vouchId)}/approve`, "POST", {});
     toast(r.vouch?.household_approval ? "Approved with your passkey — the parked checkout became an order." : "Approved — the parked checkout became an order.");
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+}
+
+// "Keep it blocked" only narrows: the parked checkout is cancelled. No passkey.
+async function decline(vouchId) {
+  try {
+    await household(`vouches/${encodeURIComponent(vouchId)}/decline`, { method: "POST", body: "{}" });
+    toast("Kept blocked — the waiting checkout was cancelled. Nothing was bought.");
     await refresh();
   } catch (e) { toast(e.message, true); }
 }

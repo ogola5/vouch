@@ -11,12 +11,20 @@ import { z } from "zod";
 export const CorrelationStatus = z.enum(["corroborated", "unconfirmed", "not_applicable"]);
 export type CorrelationStatus = z.infer<typeof CorrelationStatus>;
 
+/**
+ * "Failed" (added 2026-09-28): an attempt that could not finish — the store
+ * was down, the product did not exist, the order step errored. Every
+ * attempt leaves a record, including the ones that go wrong; an attempt
+ * that vanished without trace would be the one thing a household could not
+ * question.
+ */
 export const VouchActionStatus = z.enum([
   "PendingApproval",
   "Created",
   "Updated",
   "Complete",
   "Cancelled",
+  "Failed",
 ]);
 export type VouchActionStatus = z.infer<typeof VouchActionStatus>;
 
@@ -107,9 +115,22 @@ export const Vouch = z.object({
   }),
   decision: z.object({
     product: z.string(),
-    price: z.number(),
+    /**
+     * The unit price the gate compared. Null only on a Failed attempt that
+     * never reached a priced checkout — recorded as unknown rather than as a
+     * misleading $0.00.
+     */
+    price: z.number().nullable(),
     reason: z.array(z.string()),
   }),
+  /** Why a Failed attempt failed, and at which stage. Null otherwise. */
+  failure: z
+    .object({
+      stage: z.enum(["checkout", "order"]),
+      message: z.string(),
+    })
+    .nullable()
+    .default(null),
   action: z.object({
     ucp_session_id: z.string().nullable(),
     status: VouchActionStatus,
@@ -145,7 +166,7 @@ export const Vouch = z.object({
       mcp_request_id: z.string().nullable(),
       steps: z.array(
         z.object({
-          step: z.enum(["create", "update", "gate", "household_approval", "complete", "cancel"]),
+          step: z.enum(["create", "update", "gate", "household_approval", "household_decline", "complete", "cancel", "error"]),
           at: z.string(),
           request_id: z.string().nullable(),
           idempotency_key: z.string().nullable(),

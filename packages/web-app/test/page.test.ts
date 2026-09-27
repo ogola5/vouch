@@ -204,6 +204,15 @@ describe("the console page holds together", () => {
     }
   });
 
+  it("offers 'Keep blocked' beside every Approve, and never shows a failed price as $0.00", () => {
+    const code = withoutComments(scriptBody());
+    const approves = code.split('data-approve="${v.vouch_id}"').length - 1;
+    const declines = code.split('data-decline="${v.vouch_id}"').length - 1;
+    assert.equal(declines, approves, "a held purchase must always offer both answers");
+    assert.match(code, /price unknown/);
+    assert.match(code, /Failed — nothing bought/);
+  });
+
   it("can say 'nobody asked' on the record", () => {
     assert.match(scriptBody(), /Nobody asked — your household agent did this on its own/);
   });

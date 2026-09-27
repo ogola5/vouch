@@ -248,6 +248,8 @@ describe("passkeys: spending and widening need one, narrowing never does", () =>
       reason: ["restock"],
     });
     assert.equal((await call(r, `vouches/${bought.vouch.vouch_id}/dispute`, "POST", { reason: "no" })).status, 200);
+    const held = await heldBrandC(r);
+    assert.equal((await call(r, `vouches/${held.vouch_id}/decline`)).status, 200, "keeping it blocked needs nothing");
     assert.equal((await call(r, "mandates/m_detergent", "PATCH", { constraints: { max_price: 12, preferred_brand: "Brand A", fallback_brand: "Brand B" } })).status, 200);
   });
 

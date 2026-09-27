@@ -175,6 +175,20 @@ function confidenceLevel(confidence: number): ConfidenceLevel {
   return "low";
 }
 
+/**
+ * A purchase attempt that went wrong before any order existed. It has
+ * ALREADY been recorded as a Failed Vouch; the id says which, so a caller
+ * (the chat agent, the household agent) can point at the record.
+ */
+export class PurchaseFailedError extends Error {
+  readonly vouchId: string;
+  constructor(message: string, vouchId: string) {
+    super(`${message} (recorded as ${vouchId})`);
+    this.name = "PurchaseFailedError";
+    this.vouchId = vouchId;
+  }
+}
+
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -206,6 +220,11 @@ export class VouchService {
 
   setDisputeListener(listener: (disputed: { vouch: Vouch; mandate: Mandate }) => void): void {
     this.onDisputeRecorded = listener;
+  }
+
+  private onPurchaseDeclined: ((declined: { vouch: Vouch; mandate: Mandate }) => void) | undefined;
+  setDeclineListener(listener: (declined: { vouch: Vouch; mandate: Mandate }) => void): void {
+    this.onPurchaseDeclined = listener;
   }
 
   constructor(deps: VouchServiceDeps) {
@@ -441,7 +460,22 @@ export class VouchService {
 
     const steps: TraceStep[] = [];
     const startedBy: Trace["started_by"] = input.household ? "household_agent" : (input.origin?.started_by ?? "service");
+    // What was known when it went wrong, if it does — so a Failed record says
+    // as much as can honestly be said, and no more.
+    const progress: {
+      stage: "checkout" | "order";
+      ordered: boolean;
+      sessionId?: string;
+      product?: string;
+      price?: number;
+      checks?: MandateEvaluation["checks"];
+      confidence?: number;
+      basis?: ConfidenceBasis;
+    } = { stage: "checkout", ordered: false };
+
+    try {
     const session = await this.prepareSession(input.product_id, input.quantity, steps);
+    progress.sessionId = session.id;
     const lineItem = session.line_items[0];
     if (!lineItem?.item.price) {
       throw new Error(`Merchant returned a session with no priced line item for "${input.product_id}"`);
@@ -449,6 +483,8 @@ export class VouchService {
 
     const unitPriceMajor = toMajorUnits(lineItem.item.price, session.currency);
     const product = lineItem.item.title ?? input.product_id;
+    progress.product = product;
+    progress.price = unitPriceMajor;
 
     // The number the gate compares is EVIDENCE, capped by the agent's own
     // claim if that is lower. The agent may admit doubt; it may not
@@ -496,6 +532,9 @@ export class VouchService {
       result: evaluation.requiresApproval ? "held — the order was not placed" : "allowed",
     });
     const trace = (): Trace => ({ started_by: startedBy, mcp_request_id: input.origin?.mcp_request_id ?? null, steps });
+    progress.checks = evaluation.checks;
+    progress.confidence = confidence;
+    progress.basis = basis;
 
     // ---- The gate. Nothing below this line may call completeSession()
     // ---- unless `evaluation.withinBounds` is true.
@@ -533,6 +572,7 @@ export class VouchService {
         household: householdRecord,
         household_approval: null,
         trace: trace(),
+        failure: null,
       };
 
       const saved = this.store.saveVouch(vouch);
@@ -548,7 +588,11 @@ export class VouchService {
       };
     }
 
+    progress.stage = "order";
     const completed = await this.ucp(steps, "complete", (ids) => this.merchant.completeSession(session.id, ids));
+    // From here the order EXISTS. Anything that fails after this point must
+    // not be recorded as "Failed" — that would deny a real order.
+    progress.ordered = true;
     return this.writeCompletedVouch({
       mandate,
       session: completed,
@@ -562,6 +606,83 @@ export class VouchService {
       evaluation,
       trace: trace(),
     });
+    } catch (error) {
+      if (progress.ordered) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      const at = this.now().toISOString();
+      steps.push({ step: "error", at, request_id: null, idempotency_key: null, result: message });
+      const failed = this.store.saveVouch({
+        vouch_id: `vouch_${randomUUID()}`,
+        created_at: at,
+        intent: mandate.goal,
+        authority: {
+          mandate_id: mandate.mandate_id,
+          within_bounds: false,
+          triggered_rules: [],
+          confidence_score: progress.confidence ?? null,
+          threshold_applied: mandate.confidence_threshold,
+          checks: progress.checks ?? null,
+          confidence_basis: progress.basis ?? null,
+        },
+        decision: { product: progress.product ?? input.product_id, price: progress.price ?? null, reason: input.reason },
+        action: { ucp_session_id: progress.sessionId ?? null, status: "Failed" },
+        evidence: {
+          digital: { order_id: null, timestamp: at, payment_token_ref: null },
+          physical: { ring_event_id: null, correlation_status: "not_applicable", event_type: null, classification: null },
+        },
+        confidence: progress.confidence !== undefined ? confidenceLevel(progress.confidence) : "low",
+        user_controls: ["explain"],
+        dispute: null,
+        household: input.household
+          ? {
+              item_id: input.household.item_id,
+              initiated_by: "forecast",
+              day: input.household.day,
+              days_per_pack: input.household.days_per_pack,
+              days_left: input.household.days_left,
+              runout_risk: input.household.runout_risk,
+              delivery_day: input.household.delivery_day,
+            }
+          : null,
+        household_approval: null,
+        trace: { started_by: startedBy, mcp_request_id: input.origin?.mcp_request_id ?? null, steps },
+        failure: { stage: progress.stage, message },
+      });
+      throw new PurchaseFailedError(message, failed.vouch_id);
+    }
+  }
+
+  /**
+   * Declines a held purchase: "keep it blocked". Cancels the checkout that
+   * was parked at ready_for_complete, so it cannot be completed later, and
+   * records the household's no. Narrows authority, so no passkey.
+   */
+  async declinePurchase(vouchId: string, reason?: string): Promise<Vouch> {
+    const held = this.store.getVouch(vouchId);
+    if (!held) throw new Error(`No vouch with id "${vouchId}"`);
+    if (held.action.status !== "PendingApproval") {
+      throw new Error(`Vouch "${vouchId}" is "${held.action.status}", not "PendingApproval" — nothing to decline`);
+    }
+    const steps: TraceStep[] = [...(held.trace?.steps ?? [])];
+    steps.push({
+      step: "household_decline",
+      at: this.now().toISOString(),
+      request_id: null,
+      idempotency_key: null,
+      result: reason ? `kept blocked by the household: ${reason}` : "kept blocked by the household",
+    });
+    const sessionId = held.action.ucp_session_id;
+    if (sessionId) await this.ucp(steps, "cancel", (ids) => this.merchant.cancelSession(sessionId, ids));
+    const declined = this.store.saveVouch({
+      ...held,
+      decision: { ...held.decision, reason: [...held.decision.reason, "declined_by_household"] },
+      action: { ...held.action, status: "Cancelled" },
+      user_controls: ["explain"],
+      trace: { started_by: held.trace?.started_by ?? "service", mcp_request_id: held.trace?.mcp_request_id ?? null, steps },
+    });
+    const mandate = this.store.getMandate(held.authority.mandate_id);
+    if (mandate) this.onPurchaseDeclined?.({ vouch: declined, mandate });
+    return declined;
   }
 
   /**
@@ -610,7 +731,8 @@ export class VouchService {
       mandate,
       session: completed,
       product: held.decision.product,
-      unitPriceMajor: held.decision.price,
+      // A held purchase always reached a priced checkout; only Failed ones may not.
+      unitPriceMajor: held.decision.price ?? 0,
       reason: [...held.decision.reason, "approved_by_household"],
       // The AGENT's numbers from when it proposed, not a synthetic 1. The
       // household's yes does not make the agent retroactively confident, and
@@ -843,12 +965,22 @@ export class VouchService {
      * — so there is no stronger claim available to make, from the mock or
      * from a real provider. See BUILD_PLAN.md section 1.
      */
+    // A doorbell that errors must not cost the household the record of a
+    // real order: fall back to "unconfirmed" — no event has been seen, which
+    // is exactly true — and write the Vouch regardless.
     const physical = orderId
-      ? await this.physicalEvidence.correlateDelivery({
-          order_id: orderId,
-          expected_around: now,
-          window_minutes: RING_CORRELATION_WINDOW_MINUTES,
-        })
+      ? await this.physicalEvidence
+          .correlateDelivery({
+            order_id: orderId,
+            expected_around: now,
+            window_minutes: RING_CORRELATION_WINDOW_MINUTES,
+          })
+          .catch(() => ({
+            ring_event_id: null,
+            correlation_status: "unconfirmed" as const,
+            event_type: null,
+            classification: null,
+          }))
       : {
           ring_event_id: null,
           correlation_status: "not_applicable" as const,
@@ -886,6 +1018,7 @@ export class VouchService {
       household: args.household,
       household_approval: args.approval ?? null,
       trace: args.trace,
+      failure: null,
     };
 
     const saved = this.store.saveVouch(vouch);

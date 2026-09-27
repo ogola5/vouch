@@ -127,6 +127,7 @@ export class HouseholdAgent {
     // a dispute; and give the whole system one clock once a household exists.
     this.service.setPurchaseListener((completed) => this.recordPurchase(completed));
     this.service.setDisputeListener((disputed) => this.onDispute(disputed.mandate));
+    this.service.setDeclineListener((declined) => this.onDecline(declined.mandate));
     this.service.setClock(() => (this.isSetUp() ? this.currentDate() : new Date()));
   }
 
@@ -438,6 +439,22 @@ export class HouseholdAgent {
     }
   }
 
+  /**
+   * "Keep it blocked": the household said no to this purchase. Rest the item
+   * for a few days rather than proposing the same thing tomorrow, and do not
+   * count it as agreement.
+   */
+  private onDecline(mandate: Mandate): void {
+    const itemId = mandate.constraints.item_id;
+    if (typeof itemId !== "string" || !this.isSetUp()) return;
+    this.saveSettings(itemId, {
+      ...this.settings(itemId),
+      notice: null,
+      acceptedInARow: 0,
+      quietUntil: this.today() + NOT_YET_QUIET_DAYS,
+    });
+  }
+
   private recordPurchase(completed: { vouch: Vouch; mandate: Mandate; quantity: number; productId: string | null }) {
     const itemId = completed.mandate.constraints.item_id;
     if (typeof itemId !== "string" || !this.isSetUp()) return;
@@ -454,7 +471,7 @@ export class HouseholdAgent {
       // design, and it must not be read as "the house had run out".
       by: completed.vouch.household?.initiated_by === "forecast" ? "agent" : "household",
       product_id: completed.productId ?? undefined,
-      price: completed.vouch.decision.price,
+      price: completed.vouch.decision.price ?? undefined,
     };
     this.store.appendHouseholdEvent(itemId, event);
     // A purchase answers what a notice or "how much is left?" was asking.

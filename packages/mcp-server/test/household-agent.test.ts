@@ -114,6 +114,16 @@ describe("buying when nobody asked", () => {
     assert.ok(!r.merchant.completed.includes("detergent-brand-a"), "held means no order");
   });
 
+  it("after 'keep it blocked', rests the item instead of proposing the same thing tomorrow", async () => {
+    r.merchant.setPrice("detergent-brand-a", 19.99);
+    const first = await r.agent.advance(3);
+    const held = first.actions.find((a) => a.item_id === "detergent" && a.kind === "proposed")!;
+    assert.ok(held.kind === "proposed" && held.outcome === "held_for_approval");
+    await r.service.declinePurchase(held.vouch_id);
+    const next = await r.agent.advance(2);
+    assert.ok(!next.actions.some((a) => a.item_id === "detergent"), JSON.stringify(next.actions));
+  });
+
   it("does nothing for an item whose mandate is paused", async () => {
     r.service.pauseMandate("m_detergent");
     const { actions } = await r.agent.advance(5);

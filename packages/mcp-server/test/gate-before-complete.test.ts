@@ -148,6 +148,96 @@ describe("the trace: what actually happened, step by step", () => {
   });
 });
 
+describe("every attempt leaves a record — including the ones that go wrong", () => {
+  class DownAtCheckout extends RecordingMerchantClient {
+    override async createSession(): Promise<UcpCheckoutSession> {
+      throw new Error("connect ECONNREFUSED 127.0.0.1:4010");
+    }
+  }
+  class DownAtOrder extends RecordingMerchantClient {
+    override async completeSession(): Promise<UcpCheckoutSession> {
+      this.calls.push("complete");
+      throw new Error("POST /complete -> 503: merchant unavailable");
+    }
+  }
+  const brandA = { mandate_id: "m_detergent", product_id: "detergent-brand-a", quantity: 1, brand: "Brand A", confidence: 0.95, reason: ["restock"] };
+
+  function rigWith(client: RecordingMerchantClient, ring = new MockRingProvider()) {
+    const store = VouchStore.open(":memory:");
+    const service = new VouchService({ store, merchant: client, reasoning: new RuleBasedReasoningProvider(), physicalEvidence: ring });
+    detergentMandate(service);
+    return { store, service };
+  }
+
+  it("records a store that is down as a Failed attempt at the checkout stage — price unknown, not $0", async () => {
+    const { store, service } = rigWith(new DownAtCheckout(new Merchant()));
+    await assert.rejects(service.proposePurchase(brandA), /ECONNREFUSED.*recorded as vouch_/);
+    const [failed] = service.listVouches();
+    assert.equal(failed!.action.status, "Failed");
+    assert.equal(failed!.failure?.stage, "checkout");
+    assert.equal(failed!.decision.price, null);
+    assert.deepEqual(failed!.trace!.steps.map((s) => s.step), ["error"]);
+    assert.equal(store.verifyLedger().ok, true, "a failure is part of the record, not a hole in it");
+  });
+
+  it("records a product that does not exist", async () => {
+    const { service } = rigWith(new RecordingMerchantClient(new Merchant()));
+    await assert.rejects(service.proposePurchase({ ...brandA, product_id: "detergent-brand-z" }));
+    const [failed] = service.listVouches();
+    assert.equal(failed!.action.status, "Failed");
+    assert.match(failed!.failure!.message, /detergent-brand-z/);
+  });
+
+  it("records an order step that failed after the gate allowed it — with the checks it passed", async () => {
+    const client = new DownAtOrder(new Merchant());
+    const { service } = rigWith(client);
+    await assert.rejects(service.proposePurchase(brandA), /merchant unavailable/);
+    const [failed] = service.listVouches();
+    assert.equal(failed!.failure?.stage, "order");
+    assert.deepEqual(failed!.trace!.steps.map((s) => s.step), ["create", "update", "gate", "error"]);
+    assert.ok(failed!.authority.checks!.every((c) => c.passed), "it was allowed — the store failed, not the gate");
+    assert.equal(failed!.evidence.digital.order_id, null);
+    assert.match(await service.explainVouch(failed!.vouch_id), /Nothing was bought/);
+  });
+
+  it("never records a real order as Failed: a doorbell error keeps the order and says 'unconfirmed'", async () => {
+    const brokenRing = new MockRingProvider();
+    brokenRing.correlateDelivery = async () => {
+      throw new Error("ring timeout");
+    };
+    const { service } = rigWith(new RecordingMerchantClient(new Merchant()), brokenRing);
+    const result = await service.proposePurchase(brandA);
+    assert.equal(result.outcome, "completed");
+    assert.equal(result.vouch.action.status, "Complete");
+    assert.equal(result.vouch.evidence.physical.correlation_status, "unconfirmed");
+  });
+});
+
+describe("keep it blocked: declining a held purchase", () => {
+  const brandC = { mandate_id: "m_detergent", product_id: "detergent-brand-c", quantity: 1, brand: "Brand C", confidence: 0.9, reason: ["biggest"] };
+
+  it("cancels the parked checkout and records the household's no", async () => {
+    const r = rig();
+    detergentMandate(r.service);
+    const held = await r.service.proposePurchase(brandC);
+    const declined = await r.service.declinePurchase(held.vouch.vouch_id, "too expensive");
+    assert.equal(declined.action.status, "Cancelled");
+    assert.ok(declined.decision.reason.includes("declined_by_household"));
+    assert.deepEqual(declined.trace!.steps.map((s) => s.step), ["create", "update", "gate", "household_decline", "cancel"]);
+    assert.ok(r.client.calls.includes("cancel"), "the merchant's session is really cancelled, not just relabelled");
+    assert.ok(!r.client.calls.includes("complete"));
+  });
+
+  it("cannot be approved afterwards, and only a held purchase can be declined", async () => {
+    const r = rig();
+    detergentMandate(r.service);
+    const held = await r.service.proposePurchase(brandC);
+    await r.service.declinePurchase(held.vouch.vouch_id);
+    await assert.rejects(r.service.approvePurchase(held.vouch.vouch_id), /not "PendingApproval"/);
+    await assert.rejects(r.service.declinePurchase(held.vouch.vouch_id), /nothing to decline/);
+  });
+});
+
 describe("create_mandate refuses a rule the gate cannot read", () => {
   // Found live on Bedrock: the model copied the tool description's
   // placeholder "quantity > N" verbatim. The gate failed closed on it, which

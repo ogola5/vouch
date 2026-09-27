@@ -78,10 +78,20 @@ export class RuleBasedReasoningProvider implements ReasoningProvider {
   async explainVouch({ vouch, mandate }: ExplainVouchInput): Promise<string> {
     const { decision, authority, evidence } = vouch;
     const reasons = decision.reason.join(", ");
+    const price = decision.price === null ? "an unknown price" : `$${decision.price.toFixed(2)}`;
+
+    if (vouch.action.status === "Failed") {
+      const stage = vouch.failure?.stage === "order" ? "placing the order" : "setting up the checkout";
+      return `I tried to buy ${decision.product} for "${mandate.goal}", but it failed while ${stage}: ${vouch.failure?.message ?? "no reason given"}. Nothing was bought.`;
+    }
+
+    if (vouch.action.status === "Cancelled") {
+      return `I stopped before buying ${decision.product} at ${price}, and you decided to keep it blocked, so the checkout was cancelled. Nothing was bought.`;
+    }
 
     if (vouch.action.status === "PendingApproval") {
       const rules = authority.triggered_rules.join(", ") || "a mandate boundary";
-      return `I stopped before buying ${decision.product} at $${decision.price.toFixed(2)} because it would have crossed ${rules} on "${mandate.goal}". I'm waiting for your approval.`;
+      return `I stopped before buying ${decision.product} at ${price} because it would have crossed ${rules} on "${mandate.goal}". I'm waiting for your approval.`;
     }
 
     const physical =
@@ -91,7 +101,7 @@ export class RuleBasedReasoningProvider implements ReasoningProvider {
           ? " I don't have a Ring delivery confirmation for it yet."
           : "";
 
-    return `I bought ${decision.product} for $${decision.price.toFixed(2)} because ${reasons}, which was within the "${mandate.goal}" mandate.${physical}`;
+    return `I bought ${decision.product} for ${price} because ${reasons}, which was within the "${mandate.goal}" mandate.${physical}`;
   }
 
   async adjustConfidenceThreshold({

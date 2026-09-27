@@ -39,7 +39,7 @@ import {
 export const HOUSEHOLD_PREFIX = "/household";
 
 const MANDATE_PATH = /^\/household\/mandates\/([^/]+)$/;
-const VOUCH_ACTION_PATH = /^\/household\/vouches\/([^/]+)\/(approve|dispute)$/;
+const VOUCH_ACTION_PATH = /^\/household\/vouches\/([^/]+)\/(approve|dispute|decline)$/;
 const ITEM_STATEMENT_PATH = /^\/household\/items\/([^/]+)\/statement$/;
 const ITEM_RESPOND_PATH = /^\/household\/items\/([^/]+)\/respond$/;
 const ITEM_MODE_PATH = /^\/household\/items\/([^/]+)\/mode$/;
@@ -298,7 +298,7 @@ export async function handleHouseholdRequest(
         return true;
       }
       const before = service.listVouches({ limit: 1000 }).find((v) => v.vouch_id === target)!;
-      const price = typeof body.price === "number" ? body.price : Math.round(before.decision.price * 50) / 100;
+      const price = typeof body.price === "number" ? body.price : Math.round((before.decision.price ?? 0) * 50) / 100;
       service.tamperForDemo(target, price);
       send(res, 200, { vouch_id: target, price_was: before.decision.price, price_now: price });
       return true;
@@ -339,10 +339,19 @@ export async function handleHouseholdRequest(
         const approval = requirePasskey(
           // Signing the record's latest entry anchors all history before it.
           { kind: "approve_purchase", vouch_id: vouchId!, chain_head: service.ledgerHead() },
-          held ? `Approve ${held.decision.product} — $${held.decision.price.toFixed(2)}` : `Approve purchase ${vouchId}`,
+          held
+            ? `Approve ${held.decision.product}${held.decision.price !== null ? ` — $${held.decision.price.toFixed(2)}` : ""}`
+            : `Approve purchase ${vouchId}`,
           body
         );
         send(res, 200, await service.approvePurchase(vouchId!, approval));
+        return true;
+      }
+
+      if (action === "decline") {
+        // "Keep it blocked" only narrows — the parked checkout is cancelled.
+        // No passkey, by the same rule that lets a dispute through.
+        send(res, 200, await service.declinePurchase(vouchId!, typeof body.reason === "string" ? body.reason : undefined));
         return true;
       }
 
