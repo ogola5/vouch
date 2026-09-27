@@ -191,7 +191,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
           .describe('Why you chose this, e.g. ["price_drop", "preferred_brand"]'),
       },
     },
-    async (args) => {
+    async (args, extra) => {
       try {
         // Fields named one by one, not `args` passed through: the service also
         // accepts an internal `household` context ("the forecast says we need
@@ -205,6 +205,8 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
             brand: args.brand,
             confidence: args.confidence,
             reason: args.reason,
+            // Set here, from the transport — never from the agent's arguments.
+            origin: { started_by: "mcp_tool", mcp_request_id: String(extra.requestId) },
           })
         );
       } catch (error) {

@@ -375,6 +375,10 @@ describe("an agent cannot claim the household model's reasons", () => {
 
     const result = await client_propose_with_extra();
     assert.equal(result.vouch.household, null, "an agent must not be able to write 'initiated by the forecast'");
+    // And the trace records where it really came from: an MCP tool call.
+    const trace = (result.vouch as unknown as { trace: { started_by: string; mcp_request_id: string | null } }).trace;
+    assert.equal(trace.started_by, "mcp_tool");
+    assert.ok(trace.mcp_request_id, "the MCP request id is on the record");
     assert.equal(result.vouch.authority.confidence_basis?.notes.need, "you asked for it");
   });
 

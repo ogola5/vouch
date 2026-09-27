@@ -40,6 +40,7 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
       triggered_rules: [],
       confidence_score: 0.92,
       threshold_applied: 0.85,
+      checks: null,
       confidence_basis: null,
     },
     decision: { product: "Brand A Detergent", price: 12.49, reason: ["price_drop"] },
@@ -58,6 +59,7 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     dispute: null,
     household: null,
     household_approval: null,
+    trace: null,
   });
 }
 

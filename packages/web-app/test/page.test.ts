@@ -194,6 +194,16 @@ describe("the console page holds together", () => {
     assert.match(html, /Simulate someone editing an old record/);
   });
 
+  it("shows how every record was decided, and says plainly when a checkout stopped at the gate", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /\$\{howItDecided\(v\)\}/);
+    assert.match(code, /reached “ready to complete” and stopped there/);
+    // Every check the gate can emit has a household-language name.
+    for (const rule of ["mandate_active", "below_confidence_threshold", "price > max_price", "new_brand", "autonomy_not_granted", "autonomy_expired"]) {
+      assert.ok(code.includes(`"${rule}"`) || code.includes(`${rule}:`), `no name for check ${rule}`);
+    }
+  });
+
   it("can say 'nobody asked' on the record", () => {
     assert.match(scriptBody(), /Nobody asked — your household agent did this on its own/);
   });

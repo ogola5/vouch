@@ -66,11 +66,28 @@ export interface PurchaseProposal {
   at?: string;
 }
 
+/**
+ * One thing the gate checked, and what it found — passes as well as
+ * failures. `triggeredRules` says why a purchase was held; `checks` says
+ * everything that was looked at, so a record can show "under your $15 limit ✓,
+ * a brand you approved ✓, confidence 0.95 ≥ 0.85 ✓" and not only the reasons
+ * something failed. Additive: the decision is made exactly as before.
+ */
+export interface GateCheck {
+  rule: string;
+  passed: boolean;
+  /** The comparison, in plain terms: "$12.49 ≤ $15.00". */
+  detail: string;
+}
+
 export interface MandateEvaluation {
   withinBounds: boolean;
   requiresApproval: boolean;
   triggeredRules: string[];
+  checks: GateCheck[];
 }
+
+const money = (n: number) => `$${n.toFixed(2)}`;
 
 const QUANTITY_RULE = /^quantity\s*>\s*(\d+)$/;
 
@@ -108,29 +125,47 @@ export function unrecognizedRules(rules: string[]): string[] {
 
 export function evaluateProposal(mandate: Mandate, proposal: PurchaseProposal): MandateEvaluation {
   const triggered: string[] = [];
+  const checks: GateCheck[] = [];
   const { constraints } = mandate;
+  const check = (rule: string, passed: boolean, detail: string) => {
+    checks.push({ rule, passed, detail });
+    if (!passed) triggered.push(rule);
+  };
 
-  if (proposal.confidence < mandate.confidence_threshold) {
-    triggered.push(BELOW_CONFIDENCE_THRESHOLD);
-  }
+  checks.push({
+    rule: "mandate_active",
+    passed: mandate.status !== "paused",
+    detail: mandate.status === "paused" ? "paused by the household" : "active",
+  });
+
+  check(
+    BELOW_CONFIDENCE_THRESHOLD,
+    proposal.confidence >= mandate.confidence_threshold,
+    `confidence ${proposal.confidence.toFixed(2)} ${proposal.confidence >= mandate.confidence_threshold ? "≥" : "<"} ${mandate.confidence_threshold.toFixed(2)}`
+  );
 
   if (proposal.initiatedBy === "forecast") {
     const autonomy = mandate.autonomy;
     if (autonomy.mode !== "auto") {
       // Remind and Ask mean "tell me, don't buy". An unprompted purchase
       // under either is held — whatever the loop that proposed it believed.
-      triggered.push(AUTONOMY_NOT_GRANTED);
+      check(AUTONOMY_NOT_GRANTED, false, `nobody asked, and this item is on "${autonomy.mode}"`);
     } else if (autonomy.until !== null) {
       const day = proposal.at?.slice(0, 10);
-      if (!day || day > autonomy.until) triggered.push(AUTONOMY_EXPIRED);
+      check(
+        AUTONOMY_EXPIRED,
+        Boolean(day) && day! <= autonomy.until,
+        day ? `${day} ${day <= autonomy.until ? "≤" : ">"} ${autonomy.until}` : "could not tell the date — held"
+      );
+    } else {
+      checks.push({ rule: "autonomy", passed: true, detail: "nobody asked, and this item is on Auto" });
     }
   }
 
   for (const rule of mandate.requires_approval_if) {
     if (rule === "price > max_price") {
-      if (constraints.max_price !== undefined && proposal.price > constraints.max_price) {
-        triggered.push(rule);
-      }
+      const max = constraints.max_price;
+      check(rule, max === undefined || proposal.price <= max, max === undefined ? "no limit set" : `${money(proposal.price)} ${proposal.price <= max ? "≤" : ">"} ${money(max)}`);
       continue;
     }
 
@@ -138,23 +173,20 @@ export function evaluateProposal(mandate: Mandate, proposal: PurchaseProposal): 
       const known = [constraints.preferred_brand, constraints.fallback_brand].filter(
         (b): b is string => Boolean(b)
       );
-      if (known.length > 0 && !known.includes(proposal.brand)) {
-        triggered.push(rule);
-      }
+      const ok = known.length === 0 || known.includes(proposal.brand);
+      check(rule, ok, known.length === 0 ? "no brands named" : `${proposal.brand} ${ok ? "is" : "is not"} one of ${known.join(", ")}`);
       continue;
     }
 
     const quantityMatch = QUANTITY_RULE.exec(rule);
     if (quantityMatch) {
       const threshold = Number(quantityMatch[1]);
-      if (proposal.quantity > threshold) {
-        triggered.push(rule);
-      }
+      check(rule, proposal.quantity <= threshold, `${proposal.quantity} ${proposal.quantity <= threshold ? "≤" : ">"} ${threshold}`);
       continue;
     }
 
     // Unrecognized rule expression: fail closed.
-    triggered.push(rule);
+    check(rule, false, "not a rule the gate understands — held rather than guessed");
   }
 
   const requiresApproval = triggered.length > 0 || mandate.status === "paused";
@@ -162,5 +194,6 @@ export function evaluateProposal(mandate: Mandate, proposal: PurchaseProposal): 
     withinBounds: !requiresApproval,
     requiresApproval,
     triggeredRules: mandate.status === "paused" ? ["mandate_paused", ...triggered] : triggered,
+    checks,
   };
 }

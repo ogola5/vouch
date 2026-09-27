@@ -599,6 +599,15 @@ it?*
 - **Failure injection, trimmed:** merchant down, doorbell corroborated/unconfirmed, model failure.
 - **Agent can / cannot** list and the **claim → code → test → UI** table go into the README (W9).
 
+**W4b-1 DONE 2026-09-28 — proof on every record.** `evaluateProposal` returns `checks` (every rule,
+passes included, each with its comparison: "$13.99 ≤ $18.00"); decision logic and triggered-rule
+order unchanged, confirmed by the existing gate tests. Every Vouch keeps `authority.checks` and a
+`trace`: who started it (MCP request id when over MCP), each UCP call with the Request-Id /
+Idempotency-Key the service generated and sent, the session status after it, and the gate's
+decision between them — a held purchase's trace stops at the gate. The console's "How it decided"
+panel shows both on every record. Remaining in W4b: **W4b-2** Failed / Declined records and "keep
+blocked"; **W4b-3** security matrix + failure injection.
+
 **W5 — Demo completeness (1½ days):**
 - **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
   visibly tightens; the tour uses it.

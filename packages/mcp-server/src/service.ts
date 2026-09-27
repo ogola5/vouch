@@ -23,7 +23,7 @@ import {
 } from "@vouch/household";
 import type { ReasoningProvider } from "@vouch/reasoning";
 import type { PhysicalEvidenceProvider } from "@vouch/ring-integration";
-import type { MerchantClient } from "./merchantClient.ts";
+import type { MerchantClient, UcpCallIds } from "./merchantClient.ts";
 
 /**
  * Vouch's application layer: mandates in, gated purchases out, a Vouch
@@ -99,6 +99,18 @@ export interface HouseholdProposalContext {
 
 type ConfidenceBasis = NonNullable<Vouch["authority"]["confidence_basis"]>;
 type HouseholdRecord = Vouch["household"];
+type Trace = NonNullable<Vouch["trace"]>;
+type TraceStep = Trace["steps"][number];
+
+/**
+ * Who started a purchase, for its trace. INTERNAL, like `household`: set by
+ * the MCP tool handler, the household agent or the household route — never
+ * taken from an agent's arguments.
+ */
+export interface ProposalOrigin {
+  started_by: Trace["started_by"];
+  mcp_request_id?: string;
+}
 
 export interface CreateMandateInput {
   mandate_id?: string;
@@ -140,6 +152,8 @@ export interface ProposePurchaseInput {
   reason: string[];
   /** Internal only — see HouseholdProposalContext. */
   household?: HouseholdProposalContext;
+  /** Internal only — see ProposalOrigin. */
+  origin?: ProposalOrigin;
 }
 
 export interface ProposePurchaseResult {
@@ -425,7 +439,9 @@ export class VouchService {
       throw new Error(`No mandate with id "${input.mandate_id}"`);
     }
 
-    const session = await this.prepareSession(input.product_id, input.quantity);
+    const steps: TraceStep[] = [];
+    const startedBy: Trace["started_by"] = input.household ? "household_agent" : (input.origin?.started_by ?? "service");
+    const session = await this.prepareSession(input.product_id, input.quantity, steps);
     const lineItem = session.line_items[0];
     if (!lineItem?.item.price) {
       throw new Error(`Merchant returned a session with no priced line item for "${input.product_id}"`);
@@ -472,6 +488,14 @@ export class VouchService {
       initiatedBy: input.household ? "forecast" : "request",
       at: now,
     });
+    steps.push({
+      step: "gate",
+      at: now,
+      request_id: null,
+      idempotency_key: null,
+      result: evaluation.requiresApproval ? "held — the order was not placed" : "allowed",
+    });
+    const trace = (): Trace => ({ started_by: startedBy, mcp_request_id: input.origin?.mcp_request_id ?? null, steps });
 
     // ---- The gate. Nothing below this line may call completeSession()
     // ---- unless `evaluation.withinBounds` is true.
@@ -486,6 +510,7 @@ export class VouchService {
           triggered_rules: evaluation.triggeredRules,
           confidence_score: confidence,
           threshold_applied: mandate.confidence_threshold,
+          checks: evaluation.checks,
           confidence_basis: basis,
         },
         decision: { product, price: unitPriceMajor, reason: input.reason },
@@ -507,6 +532,7 @@ export class VouchService {
         dispute: null,
         household: householdRecord,
         household_approval: null,
+        trace: trace(),
       };
 
       const saved = this.store.saveVouch(vouch);
@@ -522,7 +548,7 @@ export class VouchService {
       };
     }
 
-    const completed = await this.merchant.completeSession(session.id);
+    const completed = await this.ucp(steps, "complete", (ids) => this.merchant.completeSession(session.id, ids));
     return this.writeCompletedVouch({
       mandate,
       session: completed,
@@ -534,6 +560,7 @@ export class VouchService {
       confidenceBasis: basis,
       household: householdRecord,
       evaluation,
+      trace: trace(),
     });
   }
 
@@ -568,7 +595,17 @@ export class VouchService {
       throw new Error(`No mandate with id "${held.authority.mandate_id}"`);
     }
 
-    const completed = await this.merchant.completeSession(held.action.ucp_session_id);
+    // The same trace, continued: the household's yes, then the order.
+    const steps: TraceStep[] = [...(held.trace?.steps ?? [])];
+    steps.push({
+      step: "household_approval",
+      at: this.now().toISOString(),
+      request_id: null,
+      idempotency_key: null,
+      result: approval ? "approved with the household's passkey" : "approved by the household",
+    });
+    const sessionId = held.action.ucp_session_id;
+    const completed = await this.ucp(steps, "complete", (ids) => this.merchant.completeSession(sessionId, ids));
     return this.writeCompletedVouch({
       mandate,
       session: completed,
@@ -590,9 +627,18 @@ export class VouchService {
         // it, otherwise an approved purchase is indistinguishable from one
         // that never needed asking.
         triggeredRules: held.authority.triggered_rules,
+        checks: [
+          ...(held.authority.checks ?? []),
+          {
+            rule: "household_approval",
+            passed: true,
+            detail: approval ? "the household approved it with its passkey" : "the household approved it",
+          },
+        ],
       },
       vouchId: held.vouch_id,
       approval,
+      trace: { started_by: held.trace?.started_by ?? "service", mcp_request_id: held.trace?.mcp_request_id ?? null, steps },
     });
   }
 
@@ -692,15 +738,42 @@ export class VouchService {
    * the gate refuses, the *only* thing standing between the session and an
    * order is the gate itself.
    */
-  private async prepareSession(productId: string, quantity: number): Promise<UcpCheckoutSession> {
-    const created = await this.merchant.createSession({
-      line_items: [{ item: { id: productId }, quantity }],
-      buyer: { email: this.household.email },
-      currency: "USD",
+  /**
+   * Every UCP call goes through here: the ids are generated HERE, sent as the
+   * Request-Id / Idempotency-Key headers, and written onto the trace with the
+   * session status the call left behind.
+   */
+  private async ucp(
+    steps: TraceStep[],
+    step: "create" | "update" | "complete" | "cancel",
+    call: (ids: UcpCallIds) => Promise<UcpCheckoutSession>
+  ): Promise<UcpCheckoutSession> {
+    const ids: UcpCallIds = { requestId: randomUUID(), ...(step === "create" ? { idempotencyKey: randomUUID() } : {}) };
+    const session = await call(ids);
+    steps.push({
+      step,
+      at: this.now().toISOString(),
+      request_id: ids.requestId,
+      idempotency_key: ids.idempotencyKey ?? null,
+      result: session.status,
     });
+    return session;
+  }
+
+  private async prepareSession(productId: string, quantity: number, steps: TraceStep[]): Promise<UcpCheckoutSession> {
+    const created = await this.ucp(steps, "create", (ids) =>
+      this.merchant.createSession(
+        {
+          line_items: [{ item: { id: productId }, quantity }],
+          buyer: { email: this.household.email },
+          currency: "USD",
+        },
+        ids
+      )
+    );
 
     const method = created.fulfillment?.methods[0];
-    const updated = await this.merchant.updateSession(created.id, {
+    const updated = await this.ucp(steps, "update", (ids) => this.merchant.updateSession(created.id, {
       buyer: { email: this.household.email },
       fulfillment: method
         ? {
@@ -728,7 +801,7 @@ export class VouchService {
           },
         ],
       },
-    });
+    }, ids));
 
     if (updated.status !== "ready_for_complete") {
       throw new Error(
@@ -755,6 +828,7 @@ export class VouchService {
     evaluation: MandateEvaluation;
     vouchId?: string;
     approval?: Vouch["household_approval"];
+    trace: Trace;
   }): Promise<ProposePurchaseResult> {
     const { mandate, session, evaluation } = args;
     const now = this.now().toISOString();
@@ -792,6 +866,7 @@ export class VouchService {
         triggered_rules: evaluation.triggeredRules,
         confidence_score: args.confidenceScore,
         threshold_applied: args.thresholdApplied,
+        checks: evaluation.checks,
         confidence_basis: args.confidenceBasis,
       },
       decision: { product: args.product, price: args.unitPriceMajor, reason: args.reason },
@@ -810,6 +885,7 @@ export class VouchService {
       dispute: null,
       household: args.household,
       household_approval: args.approval ?? null,
+      trace: args.trace,
     };
 
     const saved = this.store.saveVouch(vouch);

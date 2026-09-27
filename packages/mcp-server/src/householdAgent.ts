@@ -348,6 +348,7 @@ export class HouseholdAgent {
         brand: product.brand,
         quantity: 1,
         reason: ["you_asked", "running_low"],
+        origin: { started_by: "household" },
       });
       // Accepted as offered, and it went through: one more reason to trust it.
       const accepted = notice?.kind === "ask" && result.outcome === "completed" ? settings.acceptedInARow + 1 : 0;

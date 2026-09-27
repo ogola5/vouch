@@ -110,6 +110,44 @@ function detergentMandate(service: VouchService, confidenceThreshold = 0.85) {
   });
 }
 
+describe("the trace: what actually happened, step by step", () => {
+  const brandC = { mandate_id: "m_detergent", product_id: "detergent-brand-c", quantity: 1, brand: "Brand C", confidence: 0.9, reason: ["biggest"] };
+  const brandA = { mandate_id: "m_detergent", product_id: "detergent-brand-a", quantity: 1, brand: "Brand A", confidence: 0.95, reason: ["restock"] };
+
+  it("a held purchase's trace stops at the gate — there is no complete step", async () => {
+    const r = rig();
+    detergentMandate(r.service);
+    const { vouch } = await r.service.proposePurchase(brandC);
+    const steps = vouch.trace!.steps;
+    assert.deepEqual(steps.map((s) => s.step), ["create", "update", "gate"]);
+    assert.equal(steps[1]!.result, "ready_for_complete", "every requirement met…");
+    assert.match(steps[2]!.result, /held — the order was not placed/, "…and the gate said no");
+    assert.ok(!r.client.calls.includes("complete"), "and the merchant agrees: complete was never called");
+  });
+
+  it("each UCP step carries the ids it was sent with; create also carries its Idempotency-Key", async () => {
+    const r = rig();
+    detergentMandate(r.service);
+    const { vouch } = await r.service.proposePurchase(brandA);
+    const ucp = vouch.trace!.steps.filter((s) => s.step !== "gate");
+    assert.deepEqual(ucp.map((s) => s.step), ["create", "update", "complete"]);
+    assert.ok(ucp.every((s) => /^[0-9a-f-]{36}$/.test(s.request_id!)), "every call has a Request-Id");
+    assert.equal(new Set(ucp.map((s) => s.request_id)).size, 3, "and they are distinct");
+    assert.ok(ucp[0]!.idempotency_key, "create is idempotent by key");
+    assert.equal(ucp[2]!.result, "completed");
+  });
+
+  it("an approval continues the same trace: the held steps, the household's yes, then the order", async () => {
+    const r = rig();
+    detergentMandate(r.service);
+    const held = await r.service.proposePurchase(brandC);
+    const { vouch } = await r.service.approvePurchase(held.vouch.vouch_id);
+    assert.deepEqual(vouch.trace!.steps.map((s) => s.step), ["create", "update", "gate", "household_approval", "complete"]);
+    assert.ok(vouch.authority.checks!.some((c) => c.rule === "household_approval" && c.passed));
+    assert.ok(vouch.authority.checks!.some((c) => c.rule === "price > max_price" && !c.passed), "what stopped it is kept");
+  });
+});
+
 describe("create_mandate refuses a rule the gate cannot read", () => {
   // Found live on Bedrock: the model copied the tool description's
   // placeholder "quantity > N" verbatim. The gate failed closed on it, which

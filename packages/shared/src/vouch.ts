@@ -90,6 +90,11 @@ export const Vouch = z.object({
      * only lower it. Both are kept, so "the agent said 0.94, the evidence said
      * 0.71" is readable on the record. Null on records before 2026-09-28.
      */
+    /** Every check the gate ran, passes included — "How it decided". Null before 2026-09-28. */
+    checks: z
+      .array(z.object({ rule: z.string(), passed: z.boolean(), detail: z.string() }))
+      .nullable()
+      .default(null),
     confidence_basis: z
       .object({
         evidence: z.number().min(0).max(1),
@@ -122,6 +127,35 @@ export const Vouch = z.object({
    * numbers it acted on are recorded here so the Vouch can say why in terms a
    * household can check — "you get about 27 days from one; about 2 left".
    */
+  /**
+   * What actually happened, step by step, with the ids that tie each step to
+   * the systems it crossed: who started it (and the MCP request, when an
+   * agent did), each UCP call with its Request-Id and Idempotency-Key and the
+   * session status it left behind, and the gate's decision between them. A
+   * held purchase's trace visibly stops at ready_for_complete.
+   */
+  trace: z
+    .object({
+      /**
+       * mcp_tool: an agent (or the console) called propose_purchase over MCP.
+       * household_agent: the household model, unprompted. household: the
+       * household's own "Order it". service: a direct in-process call (tests).
+       */
+      started_by: z.enum(["mcp_tool", "household_agent", "household", "service"]),
+      mcp_request_id: z.string().nullable(),
+      steps: z.array(
+        z.object({
+          step: z.enum(["create", "update", "gate", "household_approval", "complete", "cancel"]),
+          at: z.string(),
+          request_id: z.string().nullable(),
+          idempotency_key: z.string().nullable(),
+          /** The UCP session status after this step, or the gate's outcome. */
+          result: z.string(),
+        })
+      ),
+    })
+    .nullable()
+    .default(null),
   /**
    * Set when the household approved a held purchase with its passkey: the
    * exact signed bytes, so anyone with the public key can re-verify that THIS

@@ -207,6 +207,13 @@
                 border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
   .record-bad ul { margin: 6px 0 0; padding-left: 18px; }
   .record-ok code, .record-bad code { font-size: 11.5px; }
+  details.decided { margin-top: 8px; font-size: 13px; }
+  details.decided > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 12.5px; }
+  details.decided ul { list-style: none; margin: 4px 0 8px; padding: 0; }
+  details.decided li { padding: 2px 0; }
+  details.decided li.pass > span:first-child { color: var(--ok); display: inline-block; width: 16px; }
+  details.decided li.fail > span:first-child { color: var(--bad); display: inline-block; width: 16px; }
+  .decided-h { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-top: 8px; }
 
   /* ---------- conversation ---------- */
   .chat { display: flex; flex-direction: column; }
@@ -1032,6 +1039,56 @@ function evidenceLine(v) {
   return parts.length ? `<div class="nobody">${parts.join("<br>")}</div>` : "";
 }
 
+/*
+ * "How it decided": the proof, on the record itself. Every check the gate
+ * ran — passes as well as failures — and the checkout's real steps, with the
+ * ids the merchant saw. For a held purchase the timeline visibly stops at
+ * the gate: every requirement met, and no order placed.
+ */
+const CHECK_NAME = {
+  mandate_active: "Mandate is active",
+  below_confidence_threshold: "Confident enough",
+  "price > max_price": "Within your price limit",
+  new_brand: "A brand you approved",
+  autonomy: "Allowed to buy without asking",
+  autonomy_not_granted: "Allowed to buy without asking",
+  autonomy_expired: "Still allowed to buy without asking",
+  household_approval: "You said yes",
+};
+const STEP_NAME = {
+  create: "Checkout opened",
+  update: "Address, delivery and payment set",
+  gate: "Vouch checked it against your mandate",
+  household_approval: "You approved it",
+  complete: "Order placed",
+  cancel: "Checkout cancelled",
+};
+const STARTED_BY = {
+  mcp_tool: "an agent, through Vouch's MCP tools",
+  household_agent: "your household agent, on its own",
+  household: "you",
+  service: "a direct call",
+};
+
+function howItDecided(v) {
+  const checks = v.authority.checks;
+  const trace = v.trace;
+  if (!checks && !trace) return "";
+  const ruleName = (r) => CHECK_NAME[r] ?? (/^quantity/.test(r) ? "Within your quantity limit" : r);
+  const checkRows = (checks ?? []).map((c) => `<li class="${c.passed ? "pass" : "fail"}">
+      <span aria-hidden="true">${c.passed ? "✓" : "✗"}</span> ${esc(ruleName(c.rule))} <span class="meta">— ${esc(c.detail)}</span></li>`).join("");
+  const stepRows = (trace?.steps ?? []).map((s) => `<li class="${s.step === "gate" && /held/.test(s.result) ? "fail" : "pass"}">
+      <span aria-hidden="true">${s.step === "gate" && /held/.test(s.result) ? "✋" : "→"}</span> ${esc(STEP_NAME[s.step] ?? s.step)}
+      <span class="meta">— ${esc(s.result)}${s.request_id ? ` · request <code>${esc(s.request_id.slice(0, 8))}</code>` : ""}${s.idempotency_key ? ` · idempotency <code>${esc(s.idempotency_key.slice(0, 8))}</code>` : ""}</span></li>`).join("");
+  const stoppedAtGate = trace && !trace.steps.some((s) => s.step === "complete");
+  return `<details class="decided"><summary>How it decided</summary>
+    ${trace ? `<div class="meta">Started by ${esc(STARTED_BY[trace.started_by] ?? trace.started_by)}${trace.mcp_request_id ? ` (MCP request <code>${esc(trace.mcp_request_id)}</code>)` : ""}.</div>` : ""}
+    ${checkRows ? `<div class="decided-h">What it checked</div><ul>${checkRows}</ul>` : ""}
+    ${stepRows ? `<div class="decided-h">What happened</div><ul>${stepRows}</ul>` : ""}
+    ${stoppedAtGate ? `<div class="meta"><b>The checkout reached “ready to complete” and stopped there.</b> No order exists; only you can place it.</div>` : ""}
+  </details>`;
+}
+
 function correlationText(status) {
   if (status === "corroborated") return "corroborated";
   if (status === "unconfirmed") return "unconfirmed";
@@ -1110,6 +1167,7 @@ function renderVouches() {
         </div>
         ${chain(v)}
         ${evidenceLine(v)}
+        ${howItDecided(v)}
         ${rules ? `<div style="margin-top:8px"><span class="meta">Stopped by:</span> ${rules}</div>` : ""}
         ${d ? `<div class="meta" style="margin-top:8px">You disputed it: “${esc(d.reason ?? "no reason given")}”${
           d.confidence_threshold_delta ? ` — threshold <b class="up-arrow">+${d.confidence_threshold_delta.toFixed(2)}</b>` : ""}</div>` : ""}

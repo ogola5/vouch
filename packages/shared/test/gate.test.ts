@@ -87,6 +87,33 @@ describe("evaluateProposal — autonomy: may the agent buy this without being as
   });
 });
 
+describe("evaluateProposal — reports every check, passes included", () => {
+  it("shows what it looked at when everything passes, not an empty list", () => {
+    const { checks, withinBounds } = evaluateProposal(detergentMandate(), proposal());
+    assert.equal(withinBounds, true);
+    assert.ok(checks.every((c) => c.passed));
+    const detail = (rule: string) => checks.find((c) => c.rule === rule)?.detail;
+    assert.equal(detail("price > max_price"), "$12.49 ≤ $15.00");
+    assert.equal(detail("new_brand"), "Brand A is one of Brand A, Brand B");
+    assert.equal(detail(BELOW_CONFIDENCE_THRESHOLD), "confidence 0.92 ≥ 0.85");
+    assert.equal(detail("mandate_active"), "active");
+  });
+
+  it("says exactly how a failing check failed, and still reports the ones that passed", () => {
+    const { checks } = evaluateProposal(detergentMandate(), proposal({ price: 27.8, brand: "Brand C" }));
+    assert.deepEqual(
+      checks.filter((c) => !c.passed).map((c) => c.detail),
+      ["$27.80 > $15.00", "Brand C is not one of Brand A, Brand B"]
+    );
+    assert.ok(checks.some((c) => c.passed && c.rule === BELOW_CONFIDENCE_THRESHOLD));
+  });
+
+  it("names an unknown rule as held rather than guessed", () => {
+    const { checks } = evaluateProposal(detergentMandate({ requires_approval_if: ["vendor_is_on_some_list"] }), proposal());
+    assert.match(checks.find((c) => c.rule === "vendor_is_on_some_list")!.detail, /held rather than guessed/);
+  });
+});
+
 describe("evaluateProposal — in-bounds", () => {
   it("allows a proposal that satisfies every constraint", () => {
     const result = evaluateProposal(detergentMandate(), proposal());
