@@ -44,16 +44,29 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
         "is gated against. Constraint prices are in major units (15 means $15.00).",
       inputSchema: {
         goal: z.string().describe('e.g. "Keep laundry detergent stocked"'),
+        /*
+         * Named keys, not an open map. With `z.record(...)` the model had to
+         * GUESS key names, and measured live (2026-09-28) it wrote
+         * fallback_brands: ["Brand B"] — rejected — then dropped the fallback
+         * brand on the retry, saving a mandate that forgot what the household
+         * said. Named keys put `fallback_brand` in the tool definition itself.
+         */
         constraints: z
-          .record(z.union([z.string(), z.number(), z.boolean()]))
-          .describe(
-            'e.g. { "max_price": 15, "quantity": 2, "frequency": "P1M", "preferred_brand": "Brand A" }'
-          ),
+          .object({
+            max_price: z.number().positive().optional().describe("Highest price per unit, in dollars: 15 means $15.00"),
+            quantity: z.number().int().positive().optional().describe("Most units in one purchase"),
+            preferred_brand: z.string().optional().describe("The ONE brand the household prefers"),
+            fallback_brand: z.string().optional().describe("The ONE brand that is fine when the preferred one is not"),
+            frequency: z.string().optional().describe('How often, as an ISO 8601 duration: "P1M" is monthly'),
+          })
+          .catchall(z.union([z.string(), z.number(), z.boolean()]))
+          .describe('e.g. { "max_price": 15, "preferred_brand": "Brand A", "fallback_brand": "Brand B", "frequency": "P1M" }'),
         requires_approval_if: z
           .array(z.string())
           .describe(
-            'Only these rule expressions are accepted: "price > max_price", "new_brand", and a quantity ' +
-              'limit written with a real whole number, e.g. "quantity > 2". Anything else is rejected.'
+            'Write these literally — the numbers belong in constraints, not in the rule. Only these are ' +
+              'accepted: "price > max_price" (never "price > 15"), "new_brand", and a quantity limit with a real ' +
+              'whole number, e.g. "quantity > 2". Anything else is rejected.'
           ),
         authority_type: z.enum(["explicit", "delegated", "inferred"]),
         mandate_id: z.string().optional(),

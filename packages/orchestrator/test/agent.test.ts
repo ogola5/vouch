@@ -162,6 +162,12 @@ describe("the system prompt keeps its non-negotiables", () => {
     assert.match(VOUCH_SYSTEM_PROMPT, /Never end it with a question offering to proceed/);
   });
 
+  it("says a standing instruction is not a request to buy now", () => {
+    // Measured 2026-09-28 on Nova 2 Lite: 0/5 — every "keep detergent
+    // stocked…" ended in create_mandate → search_catalog → propose_purchase.
+    assert.match(VOUCH_SYSTEM_PROMPT, /is NOT a request to buy anything now/);
+  });
+
   it("tells the agent not to inflate its own confidence", () => {
     // The open question in BUILD_PLAN.md §7 is that nothing validates this
     // number. Until that is resolved the prompt is the only thing discouraging

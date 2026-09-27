@@ -630,6 +630,24 @@ orders corroborated / unconfirmed — which closes the §6 "console doorbell nev
 Found on the way: `/api/state` fetched the catalog, so a store outage took the whole console —
 including the household's record — down with it; it now degrades to `store_down: true`.
 
+**W5a DONE 2026-09-28 — the conversation, measured.** `packages/orchestrator/test/conversation.test.ts`
+(live) counts three behaviours on fresh agents, Nova 2 Lite:
+
+| Behaviour | Before | After |
+|---|---|---|
+| A. "I didn't want that" disputes the right purchase, mandate tightens | 5/5 | 5/5 |
+| B. A standing instruction → a *faithful* mandate, and nothing bought | **0/5** | **5/5** |
+| C. Store down → says it failed, claims no success | 3/3 | 3/3 |
+
+A needed nothing: `list_vouches → record_dispute` unprompted. B was the §6 finding, measured, and
+worse than noted: the open `constraints` map made the model guess key names — it wrote
+`fallback_brands: ["Brand B"]`, was rejected, and on the retry **dropped the fallback brand**, saving
+a mandate that forgot what the household said. Fixed with named keys in the `create_mandate` schema
+(the model now sees `fallback_brand`), rules described as literal ("never `price > 15`"), and one
+prompt line: setting a standing instruction is not a request to buy now. `create_mandate` now
+succeeds first time; a trial went from ~44s to ~17s. Full live suite 30/30. Limits: 5 trials per
+behaviour, one phrasing each, one model.
+
 **W5 — Demo completeness (1½ days):**
 - **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
   visibly tightens; the tour uses it.
@@ -869,8 +887,8 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
     - Declaration files emit `.ts` relative specifiers under `rewriteRelativeImportExtensions` while
       the JavaScript correctly emits `.js`. TypeScript resolves this fine and typecheck passes, so it
       costs nothing today; it would matter only if a non-TypeScript consumer ever read `dist/`.
-    - **The agent buys immediately after creating a mandate, unasked (noticed 2026-09-27, live on
-      Nova 2 Lite).** "Keep detergent stocked" produced `create_mandate → search_catalog →
+    - **~~The agent buys immediately after creating a mandate, unasked~~ — DONE in §3b W5a, measured
+      0/5 → 5/5. (noticed 2026-09-27, live on Nova 2 Lite).** "Keep detergent stocked" produced `create_mandate → search_catalog →
       propose_purchase` in one turn. Inside the gate, so harmless, but it merges demo steps 1 and 2.
       A prompt line ("setting a mandate is not a request to buy now") would likely fix it.
     - **~~A Vouch can read "confidence high" and "agent not confident enough" at once~~ — DONE as
