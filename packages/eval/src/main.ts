@@ -3,6 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { costOfTightening, lateHarmReduction, runTrial } from "./simulate.ts";
 import { runSweep } from "./sweep.ts";
+import { restockSummary, runRestockTrial, type PolicyMetrics } from "./restock.ts";
 
 /**
  * Runs the trial and commits the result, so the numbers in the README are
@@ -66,4 +67,29 @@ ${sweep
   .join("\n")}
 ${"=".repeat(60)}
 written to ${OUT}
+`);
+
+const restock = runRestockTrial();
+writeFileSync(resolve(PACKAGE_ROOT, "results", "restock.json"), `${JSON.stringify(restock, null, 2)}\n`, "utf8");
+const s = restockSummary(restock);
+const row = (label: string, m: PolicyMetrics, q: number) =>
+  `  ${label.padEnd(30)} ${String(m.stockoutDays).padStart(7)}   ${m.meanStockDays.toFixed(1).padStart(6)}   ` +
+  `${String(m.packsBought).padStart(6)}   ${String(m.earlyArrivals).padStart(6)}   ${q.toFixed(1).padStart(5)}`;
+
+console.log(`
+Vouch — restocking from a forecast vs a calendar
+${"=".repeat(60)}
+${restock.config.households} households · ${restock.itemYears.toLocaleString()} item-years · seed ${restock.config.seed}
+
+                                 days out  stock    packs   early   asks/
+                                 of stock  (days)   bought  arrive  hh/wk
+${row("forecast, asks once per pack", restock.forecast, s.forecast.questionsPerHouseholdWeek)}
+${row("forecast, never asks", restock.forecastNoQuestions, 0)}
+${row("forecast, asks weekly", restock.forecastWeekly, s.forecastWeekly.questionsPerHouseholdWeek)}
+${row("calendar, household's interval", restock.calendarStated, 0)}
+${row("calendar, monthly", restock.calendarMonthly, 0)}
+
+Forecast accuracy: off by ${restock.forecastAccuracy.meanAbsErrorDays.toFixed(1)} days on average; the real
+days-left fell inside its 80% range ${(restock.forecastAccuracy.coverage80 * 100).toFixed(1)}% of the time.
+${"=".repeat(60)}
 `);

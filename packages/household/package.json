@@ -1,5 +1,5 @@
 {
-  "name": "@vouch/eval",
+  "name": "@vouch/household",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,11 +7,6 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -b tsconfig.json"
-  },
-  "dependencies": {
-    "@vouch/household": "*",
-    "@vouch/reasoning": "*",
-    "@vouch/shared": "*"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

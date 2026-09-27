@@ -2,8 +2,8 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 
-import { DEFAULT_TRIAL, lateHarmReduction, runTrial } from "@vouch/eval";
-import type { SweepRow, TrialResult } from "@vouch/eval";
+import { DEFAULT_TRIAL, lateHarmReduction, restockSummary, runRestockTrial, runTrial } from "@vouch/eval";
+import type { RestockResult, SweepRow, TrialResult } from "@vouch/eval";
 
 /**
  * Every number published in README.md, re-derived from the committed results.
@@ -79,6 +79,55 @@ describe("the README's headline numbers match the data", () => {
     assert.match(README, /0\.669/);
     assert.match(README, /178%/);
     assert.match(README, /only \*\*after\*\* that fix/);
+  });
+});
+
+describe("restocking: the README's numbers are what the simulation produces", () => {
+  const restock = JSON.parse(
+    readFileSync(new URL("../results/restock.json", import.meta.url), "utf8")
+  ) as RestockResult;
+  const s = restockSummary(restock);
+  const pct = (n: number) => `${Math.abs(n).toFixed(1)}%`;
+
+  it("reproduces exactly from the same seed", () => {
+    const rerun = runRestockTrial(restock.config);
+    for (const policy of ["forecast", "forecastNoQuestions", "forecastWeekly", "calendarStated", "calendarMonthly"] as const) {
+      assert.deepEqual(rerun[policy], restock[policy], policy);
+    }
+    assert.deepEqual(rerun.forecastAccuracy, restock.forecastAccuracy);
+  });
+
+  it("ran the scale and the fair baseline the README claims", () => {
+    assert.equal(restock.itemYears, 1200);
+    assert.match(README, /1,200\s+item-years/);
+    assert.match(README, /own stated\s+interval/);
+    assert.equal(restock.config.tellsRunoutRate, 0.7);
+  });
+
+  it("headlines the default's win against the fair calendar", () => {
+    for (const n of [s.forecast.stockoutDaysChange, s.forecast.stockHeldChange, s.forecast.packsChange, s.forecast.earlyChange]) {
+      assert.ok(n < 0, "every headline number is a reduction");
+      assert.match(README, new RegExp(pct(n).replace(".", "\\.")));
+    }
+  });
+
+  it("states the cost in questions next to the win", () => {
+    // The guardrail again: a win reported without its cost is an overclaim.
+    assert.match(README, new RegExp(`${s.forecast.questionsPerHouseholdWeek.toFixed(1)} one-tap questions`));
+    assert.match(README, new RegExp(`${s.forecastWeekly.questionsPerHouseholdWeek.toFixed(1)} questions a week`));
+  });
+
+  it("says that never asking avoids run-outs by hoarding", () => {
+    assert.ok(s.forecastNoQuestions.stockHeldChange > 0);
+    assert.match(README, new RegExp(`${pct(s.forecastNoQuestions.stockHeldChange).replace(".", "\\.")} more stock`));
+    assert.match(README, /by hoarding/);
+  });
+
+  it("reports calibration, which the forecast has to earn", () => {
+    const coverage = restock.forecastAccuracy.coverage80 * 100;
+    assert.ok(coverage > 75 && coverage < 85, `an 80% range should hold about 80% of the time; got ${coverage}`);
+    assert.match(README, new RegExp(`${coverage.toFixed(1)}%`));
+    assert.match(README, new RegExp(`${restock.forecastAccuracy.meanAbsErrorDays.toFixed(1)} days`));
   });
 });
 

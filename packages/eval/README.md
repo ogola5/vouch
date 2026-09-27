@@ -98,6 +98,49 @@ actively harmful, which is how the bug surfaced.
 Both were invisible to 131 passing unit tests, because each component did exactly what it was
 written to do. The failure was in the composition, over time.
 
+## Restocking from a forecast, versus a calendar
+
+Amazon's Scheduled Actions restock on a calendar. The household model (`packages/household`)
+restocks from a forecast of when *this* house runs out. Does that actually do better?
+
+**Synthetic, like everything in this file.** 200 households × 6 items × 365 days = **1,200
+item-years**, seed `20260927`. Each household's real pace sits around the category guess (log sd
+0.35); each pack varies (log sd 0.2); guests occasionally visit and use 1.6× as much; households say
+"we're out" only **70%** of the time, answer "how much is left?" 80% of the time, roughly.
+
+**The baseline is unflattering on purpose:** a calendar set to the household's **own stated
+interval** — the best a calendar could do — not a generic "every month" (reported too).
+
+| policy | days out of stock | stock in the house | packs bought | deliveries too early | asks per household per week |
+|---|---|---|---|---|---|
+| **forecast, asks once per pack (default)** | 3,375 | 18.3 days | 24,654 | 843 | 2.6 |
+| forecast, never asks | 1,301 | 64.3 days | 31,065 | 20,665 | 0 |
+| forecast, asks weekly | 2,025 | 17.9 days | 24,766 | 945 | 4.1 |
+| calendar, household's own interval | 4,295 | 40.0 days | 27,456 | 12,133 | 0 |
+| calendar, monthly | 16,812 | 32.0 days | 24,404 | 3,471 | 0 |
+
+**Against the fair calendar, the default forecast runs out 21.4% less, keeps 54.2% less stock in
+the house, buys 10.2% fewer packs, and delivers too early 93.1% less often.**
+
+**What it cost: 2.6 one-tap questions per household per week** across six items ("roughly how much
+is left — almost out, half, a full one?"). That is why it is a household setting, not hidden:
+asking weekly runs out 52.9% less at 4.1 questions a week.
+
+**Never asking is not free either.** It runs out least (69.7% less) — by hoarding: 60.8% more stock
+in the house and 13.1% more packs bought. An agent that never checks can only avoid running out by
+buying early.
+
+**The forecast is calibrated, not just better.** Its "days left" is off by 7.3 days on average,
+and the real value fell inside its stated 80% range 79.7% of the time — it is as unsure as it says.
+
+### What this found that the unit tests had not
+
+The first version averaged **90 days** of stock in the house. An agent that buys *before* the house
+runs out never hears "we're out", so it never learned, and projecting ten bottles ahead from the
+first turned a 25% pace error into months. The "how much is left?" answer — re-anchoring the stock
+and teaching the pace — exists because of that run. So does the rule that silence is never treated
+as "still lasting".
+
 ## Honest limits
 
 - Synthetic households, not real ones.
@@ -105,3 +148,6 @@ written to do. The failure was in the composition, over time.
 - Disputes are assumed perfect: every unwanted purchase is complained about, immediately. Real
   households are inconsistent, and that would weaken the signal the loop learns from.
 - One seed. The figures are reproducible, not distributionally characterised.
+- Restocking: consumption, reporting and answer accuracy are all assumed, not measured. Delivery is
+  a fixed 2 days. A household's pace is assumed stable apart from guests; a new baby or a new dog
+  would need a real change detector, which the model does not have.

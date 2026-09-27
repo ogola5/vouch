@@ -4,6 +4,7 @@
   "files": [],
   "references": [
     { "path": "./packages/shared" },
+    { "path": "./packages/household" },
     { "path": "./packages/reasoning" },
     { "path": "./packages/ring-integration" },
     { "path": "./packages/db" },

@@ -422,6 +422,20 @@ it makes the agent autonomous rather than prompted. *Risk:* a new package plus a
 gate and its tests are unchanged; if it overruns, ship the model + manual "fast-forward" trigger
 without the per-category trust ladder.
 
+**W2 progress — steps 1-2 DONE 2026-09-27** (`packages/household` forecast; `packages/eval`
+restock simulation, results committed, README claims checked by test). Against a calendar at the
+household's *own* interval, over 1,200 synthetic item-years: **21.4% fewer days out of stock,
+54.2% less stock in the house, 10.2% fewer packs, 93.1% fewer too-early deliveries**, at a cost of
+**2.6 one-tap questions per household per week**. Calibrated: 80% range held 79.7% of the time.
+**Two design changes the simulation forced, both now in the agreed design:**
+1. *"How much is left?" (a `level` event) is load-bearing, not optional.* The first version never
+   heard "we're out" (the agent buys first, by design), never learned, and averaged 90 days of
+   stock. Asking re-anchors the stock and teaches the pace.
+2. *Questions are a household setting* — off / once per pack (default) / weekly — because it is a
+   real trade-off: never asking runs out least but hoards (+60.8% stock); weekly runs out 52.9%
+   less at 4.1 asks a week. Also: silence is never treated as "still lasting".
+Remaining: step 3 (evidence-based confidence + autonomous proposals + fast-forward), step 4 (pantry view).
+
 **W2 design — AGREED WITH THE OWNER 2026-09-27.** *Numbers from arithmetic, words from the model.*
 - **Forecast is plain statistics, not AI.** Per item: days one pack lasts this household, with
   uncertainty. Starts from a labelled category default worth ~2 refills, or from the household's

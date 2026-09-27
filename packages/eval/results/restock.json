@@ -1,0 +1,60 @@
+{
+  "config": {
+    "households": 200,
+    "days": 365,
+    "seed": 20260927,
+    "householdPaceSpread": 0.35,
+    "packNoise": 0.2,
+    "answerError": 0.25,
+    "tellsRunoutRate": 0.7,
+    "guestsPerDay": 0.022222222222222223,
+    "answersQuestionRate": 0.8,
+    "levelAnswerError": 0.3
+  },
+  "itemYears": 1200,
+  "forecast": {
+    "stockoutDays": 3375,
+    "runouts": 4022,
+    "packsBought": 24654,
+    "earlyArrivals": 843,
+    "meanStockDays": 18.307698591127878,
+    "questionsAsked": 27029
+  },
+  "forecastNoQuestions": {
+    "stockoutDays": 1301,
+    "runouts": 1381,
+    "packsBought": 31065,
+    "earlyArrivals": 20665,
+    "meanStockDays": 64.29450278331143,
+    "questionsAsked": 0
+  },
+  "forecastWeekly": {
+    "stockoutDays": 2025,
+    "runouts": 2894,
+    "packsBought": 24766,
+    "earlyArrivals": 945,
+    "meanStockDays": 17.894550248035333,
+    "questionsAsked": 42936
+  },
+  "calendarStated": {
+    "stockoutDays": 4295,
+    "runouts": 2955,
+    "packsBought": 27456,
+    "earlyArrivals": 12133,
+    "meanStockDays": 39.99208729258905,
+    "questionsAsked": 0
+  },
+  "calendarMonthly": {
+    "stockoutDays": 16812,
+    "runouts": 9426,
+    "packsBought": 24404,
+    "earlyArrivals": 3471,
+    "meanStockDays": 32.02429472020376,
+    "questionsAsked": 0
+  },
+  "forecastAccuracy": {
+    "meanAbsErrorDays": 7.298419776468134,
+    "coverage80": 0.7966781312346238,
+    "daysMeasured": 408505
+  }
+}

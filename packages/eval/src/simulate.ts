@@ -34,7 +34,7 @@ import { RuleBasedReasoningProvider } from "@vouch/reasoning";
  * anecdote. Every figure this file publishes can be re-derived by running it
  * again, and `test/claims.test.ts` does exactly that.
  */
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
