@@ -19,6 +19,38 @@ export const MandateStatus = z.enum(["active", "paused"]);
 export type MandateStatus = z.infer<typeof MandateStatus>;
 
 /**
+ * May the agent act on this mandate ON ITS OWN — without anyone asking?
+ *
+ *   remind  tell the household it is running low; order nothing
+ *   ask     propose a specific order and wait for a yes   (the default)
+ *   auto    buy within the mandate's limits, then tell them
+ *
+ * `until` makes autonomy expire: after that date the gate stops honouring
+ * `auto` and an unprompted purchase is held — safe by default, because a
+ * household that forgets its own deadline gets asked, not charged.
+ *
+ * This governs only purchases the agent STARTS. A household's own request
+ * ("order my usual") is authorised by the mandate's limits as before.
+ */
+export const AutonomyMode = z.enum(["remind", "ask", "auto"]);
+export type AutonomyMode = z.infer<typeof AutonomyMode>;
+
+export const Autonomy = z.object({
+  mode: AutonomyMode.default("ask"),
+  /** Last day autonomy holds, inclusive, as YYYY-MM-DD. Null means no end date. */
+  until: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .default(null),
+  /** Weekdays a delivery may arrive (0 = Sunday … 6 = Saturday). Null means any day. */
+  delivery_days: z.array(z.number().int().min(0).max(6)).min(1).nullable().default(null),
+});
+export type Autonomy = z.infer<typeof Autonomy>;
+
+export const DEFAULT_AUTONOMY: Autonomy = { mode: "ask", until: null, delivery_days: null };
+
+/**
  * Known constraint keys are typed explicitly; the catchall allows a mandate
  * to carry additional category-specific constraints later (week 2+) without
  * a schema migration every time.
@@ -80,6 +112,8 @@ export const Mandate = z.object({
    */
   baseline_confidence_threshold: z.number().min(0).max(1),
   status: MandateStatus.default("active"),
+  /** Defaults to "ask" — including for every mandate written before autonomy existed. */
+  autonomy: Autonomy.default(DEFAULT_AUTONOMY),
   history: MandateHistory,
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
@@ -91,7 +125,7 @@ export function newMandate(
   input: Pick<
     Mandate,
     "mandate_id" | "goal" | "constraints" | "requires_approval_if" | "authority_type"
-  > & { confidence_threshold?: number }
+  > & { confidence_threshold?: number; autonomy?: Autonomy }
 ): Mandate {
   const now = new Date().toISOString();
   const threshold = input.confidence_threshold ?? 0.85;

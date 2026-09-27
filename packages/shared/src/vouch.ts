@@ -130,6 +130,8 @@ export const Vouch = z.object({
       days_per_pack: z.number(),
       days_left: z.object({ low: z.number(), median: z.number(), high: z.number() }).nullable(),
       runout_risk: z.number().min(0).max(1),
+      /** Requested delivery day, inside the household's delivery window. Null before windows existed. */
+      delivery_day: z.number().int().nullable().default(null),
     })
     .nullable()
     .default(null),

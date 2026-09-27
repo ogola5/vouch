@@ -50,6 +50,20 @@ export interface PurchaseProposal {
    * forced at the call site instead of hidden here.
    */
   confidence: number;
+  /**
+   * Who started this purchase. "forecast" means nobody asked — the household
+   * model decided it was time — so the mandate's AUTONOMY is checked as well
+   * as its limits. Omitted means a request (a person asked, directly or via
+   * the chat agent), which autonomy does not govern.
+   */
+  initiatedBy?: "request" | "forecast";
+  /**
+   * When, as an ISO 8601 datetime — needed to check autonomy's end date.
+   * A forecast-initiated proposal without it fails closed if the mandate's
+   * autonomy has an end date: "we could not tell whether it had expired"
+   * must mean held, never allowed.
+   */
+  at?: string;
 }
 
 export interface MandateEvaluation {
@@ -70,6 +84,15 @@ const QUANTITY_RULE = /^quantity\s*>\s*(\d+)$/;
  */
 export const BELOW_CONFIDENCE_THRESHOLD = "below_confidence_threshold";
 
+/**
+ * Synthesized for purchases the agent started on its own (initiatedBy
+ * "forecast"). Same shape as `mandate_paused`: a check on the mandate's
+ * authority status, not on the purchase's contents — see BUILD_PLAN.md §3b
+ * for why this is not the "third concern" the Reviewed-and-kept note warns of.
+ */
+export const AUTONOMY_NOT_GRANTED = "autonomy_not_granted";
+export const AUTONOMY_EXPIRED = "autonomy_expired";
+
 const KNOWN_RULES = new Set(["price > max_price", "new_brand"]);
 
 /**
@@ -89,6 +112,18 @@ export function evaluateProposal(mandate: Mandate, proposal: PurchaseProposal): 
 
   if (proposal.confidence < mandate.confidence_threshold) {
     triggered.push(BELOW_CONFIDENCE_THRESHOLD);
+  }
+
+  if (proposal.initiatedBy === "forecast") {
+    const autonomy = mandate.autonomy;
+    if (autonomy.mode !== "auto") {
+      // Remind and Ask mean "tell me, don't buy". An unprompted purchase
+      // under either is held — whatever the loop that proposed it believed.
+      triggered.push(AUTONOMY_NOT_GRANTED);
+    } else if (autonomy.until !== null) {
+      const day = proposal.at?.slice(0, 10);
+      if (!day || day > autonomy.until) triggered.push(AUTONOMY_EXPIRED);
+    }
   }
 
   for (const rule of mandate.requires_approval_if) {

@@ -132,11 +132,21 @@ describe("buying when nobody asked", () => {
 });
 
 describe("what the household tells it", () => {
-  it("'we're out' makes it buy the next day", async () => {
+  it("'we're out' on an Auto item makes it buy the next day", async () => {
+    const r = rig();
+    r.agent.record("toilet-paper", { kind: "runout" });
+    const { actions } = await r.agent.advance(1);
+    assert.ok(actions.some((a) => a.item_id === "toilet-paper" && a.kind === "proposed"), JSON.stringify(actions));
+  });
+
+  it("'we're out' on an Ask item suggests an order instead of buying", async () => {
+    // Dog food is in Ask mode in the demo: running out is a reason to ask
+    // sooner, not permission to buy.
     const r = rig();
     r.agent.record("dog-food", { kind: "runout" });
     const { actions } = await r.agent.advance(1);
-    assert.ok(actions.some((a) => a.item_id === "dog-food" && a.kind === "proposed"));
+    assert.ok(actions.some((a) => a.item_id === "dog-food" && a.kind === "notified"));
+    assert.ok(!actions.some((a) => a.item_id === "dog-food" && a.kind === "proposed"));
   });
 
   it("an answer to 'how much is left?' clears the question", async () => {
@@ -168,6 +178,138 @@ describe("what the household tells it", () => {
   it("refuses a nonsense answer rather than learning from it", () => {
     const r = rig();
     assert.throws(() => r.agent.record("coffee", { kind: "level", packs: -1 }), /between 0 and 10/);
+  });
+});
+
+describe("modes: what the household has handed over, per item", () => {
+  /** Advances a day at a time until `pred` is met, returning that day's actions. */
+  async function until(r: Rig, pred: (a: { item_id: string; kind: string }) => boolean, maxDays = 40) {
+    for (let i = 0; i < maxDays; i++) {
+      const { actions } = await r.agent.advance(1);
+      if (actions.some(pred)) return actions;
+    }
+    throw new Error("never happened");
+  }
+
+  it("the demo opens with all three modes, so one fast-forward shows each", () => {
+    const r = rig();
+    assert.equal(item(r, "detergent").autonomy?.mode, "auto");
+    assert.equal(item(r, "coffee").autonomy?.mode, "ask");
+    assert.equal(item(r, "dish-soap").autonomy?.mode, "remind");
+  });
+
+  it("Ask suggests a specific order and buys nothing until the household says yes", async () => {
+    const r = rig();
+    await until(r, (a) => a.item_id === "coffee" && a.kind === "notified");
+    const notice = item(r, "coffee").settings.notice!;
+    assert.equal(notice.kind, "ask");
+    assert.equal(notice.product_id, "coffee-morning-ridge");
+    assert.equal(notice.usual_price, 9.99);
+    assert.ok(!r.merchant.completed.includes("coffee-morning-ridge"), "asking is not buying");
+
+    const { result } = await r.agent.respond("coffee", { response: "order" });
+    assert.equal(result?.outcome, "completed");
+    assert.equal(result?.vouch.household, null, "the household asked — the record must not say the forecast did");
+    assert.equal(item(r, "coffee").settings.notice, null);
+  });
+
+  it("Remind tells the household and names no order", async () => {
+    const r = rig();
+    await until(r, (a) => a.item_id === "dish-soap" && a.kind === "notified");
+    assert.equal(item(r, "dish-soap").settings.notice?.kind, "remind");
+    assert.ok(!r.merchant.completed.includes("dish-soap-clearwave"));
+  });
+
+  it("asks once per need, not every day", async () => {
+    const r = rig();
+    const all: { item_id: string; kind: string }[] = [];
+    for (let i = 0; i < 12; i++) all.push(...(await r.agent.advance(1)).actions);
+    assert.equal(all.filter((a) => a.item_id === "coffee" && a.kind === "notified").length, 1);
+  });
+
+  it("'not yet' rests for a few days instead of nagging", async () => {
+    const r = rig();
+    await until(r, (a) => a.item_id === "coffee" && a.kind === "notified");
+    await r.agent.respond("coffee", { response: "not_yet" });
+    const next = await r.agent.advance(2);
+    assert.ok(!next.actions.some((a) => a.item_id === "coffee" && a.kind === "notified"));
+  });
+
+  it("'not until the 15th' stays quiet until then", async () => {
+    const r = rig();
+    await until(r, (a) => a.item_id === "coffee" && a.kind === "notified");
+    const quietTo = r.agent.today() + 6;
+    await r.agent.respond("coffee", { response: "snooze", until_day: quietTo });
+    const next = await r.agent.advance(5);
+    assert.ok(!next.actions.some((a) => a.item_id === "coffee"));
+  });
+
+  it("earns trust: four suggestions accepted as-is lead to an offer to take over, for 90 days", async () => {
+    const r = rig();
+    for (let n = 0; n < 4; n++) {
+      await until(r, (a) => a.item_id === "coffee" && a.kind === "notified");
+      await r.agent.respond("coffee", { response: "order" });
+    }
+    const offer = item(r, "coffee").settings.promotion;
+    assert.ok(offer, "after four yeses it should offer to handle coffee on its own");
+    assert.equal(item(r, "coffee").autonomy?.mode, "ask", "an offer is not a change: the household decides");
+
+    await r.agent.respond("coffee", { response: "accept_promotion" });
+    assert.equal(item(r, "coffee").autonomy?.mode, "auto");
+    assert.equal(item(r, "coffee").autonomy?.until, offer.until, "handed over for a set time, not forever");
+  });
+
+  it("loses trust: a dispute demotes an Auto item to Ask at once", async () => {
+    const r = rig();
+    const actions = await until(r, (a) => a.item_id === "detergent" && a.kind === "proposed");
+    const bought = actions.find((a) => a.item_id === "detergent" && a.kind === "proposed")!;
+    assert.ok(bought.kind === "proposed");
+    await r.service.recordDispute({ vouch_id: bought.vouch_id, reason: "wrong one" });
+    const detergent = item(r, "detergent");
+    assert.equal(detergent.autonomy?.mode, "ask");
+    assert.match(detergent.settings.lastModeChange!.why, /disputed/);
+  });
+
+  it("expires: Auto with an end date steps down to Ask by itself", async () => {
+    const r = rig();
+    const actions = await until(r, (a) => a.item_id === "toilet-paper" && a.kind === "autonomy_expired", 65);
+    assert.ok(actions.length > 0);
+    assert.equal(item(r, "toilet-paper").autonomy?.mode, "ask");
+  });
+
+  it("honours a delivery window: weekend-only toilet paper is ordered to arrive on a weekend", async () => {
+    const r = rig();
+    const actions = await until(r, (a) => a.item_id === "toilet-paper" && a.kind === "proposed");
+    const proposal = actions.find((a) => a.item_id === "toilet-paper" && a.kind === "proposed")!;
+    assert.ok(proposal.kind === "proposed");
+    const vouch = r.service.listVouches({ limit: 50 }).find((v) => v.vouch_id === proposal.vouch_id)!;
+    const weekday = new Date(`${r.agent.dateOf(vouch.household!.delivery_day!)}T00:00:00Z`).getUTCDay();
+    assert.ok(weekday === 0 || weekday === 6, `delivery day is weekday ${weekday}`);
+  });
+
+  it("the gate enforces the mode even if the loop got it wrong", async () => {
+    // Pretend the household loop had a bug and tried to buy coffee (Ask mode)
+    // on its own. The gate — not the loop — must hold it.
+    const r = rig();
+    const result = await r.service.proposePurchase({
+      mandate_id: "m_coffee",
+      product_id: "coffee-morning-ridge",
+      brand: "Morning Ridge",
+      quantity: 1,
+      reason: ["running_low"],
+      household: {
+        item_id: "coffee",
+        day: 101,
+        need: { kind: "forecast", runoutRisk: 0.6, status: "stocked" },
+        days_per_pack: 11,
+        days_left: { low: 1, median: 2, high: 4 },
+        runout_risk: 0.6,
+        delivery_day: 103,
+      },
+    });
+    assert.equal(result.outcome, "held_for_approval");
+    assert.ok(result.vouch.authority.triggered_rules.includes("autonomy_not_granted"));
+    assert.ok(!r.merchant.completed.includes("coffee-morning-ridge"));
   });
 });
 

@@ -446,6 +446,36 @@ way: evidence must not reimpose a brand restriction the household lifted (fit is
 table: false "real React Native Fire TV app" row corrected.
 Remaining: step 4 (pantry view).
 
+**Step 4 redesigned with the owner, 2026-09-28 — autonomy is a choice per item, not the default.**
+Modes: **Remind** (notify only) / **Ask** (propose a specific order; one tap or one sentence to
+confirm — the DEFAULT for every new item) / **Auto** (buy within limits, tell after) / **Auto until
+a date** (falls back to Ask by itself). Trust moves between them: *earned* (after 4 accepted
+suggestions in a row the agent offers to handle the item — accepting widens authority, so it will
+need the W3 passkey), *lost* (a dispute demotes to Ask at once, no passkey), *expired* (a date
+narrows it automatically — safe by default). Owner decisions: default Ask; an in-limits "Order" tap
+needs **no** passkey (the mandate already authorizes it; held purchases and promotions do); **delivery
+windows** included (e.g. weekends only — orders go out early enough to arrive in the window); the demo
+shows all three modes at once (detergent Auto, coffee Ask, dish soap Remind).
+*Gate decision, recorded per CLAUDE.md §5:* the "Reviewed and kept" note on `evaluateProposal` says
+revisit if a third concern wants in. Autonomy is judged NOT a third concern: the gate already refuses
+a paused mandate (`mandate_paused`), an authority-status check, and "this item's autonomy is not
+granted / has expired" is the same shape. So it enters as a synthesized rule
+(`autonomy_not_granted` / `autonomy_expired`) that applies only to forecast-initiated proposals — a
+household's own request is untouched. The point of putting it in the gate rather than the household
+loop: if the loop or the UI ever gets the mode wrong, the gate still holds, fail-closed.
+Split: **4a** modes + gate rule + windows + earn/lose/expire (server, tested); **4b** the pantry and
+notifications screen.
+**4a DONE 2026-09-28.** `Mandate.autonomy` {mode, until, delivery_days}, default "ask"; gate rules
+`autonomy_not_granted` / `autonomy_expired` for forecast-initiated proposals only (fail-closed without
+a date); HouseholdAgent: notices once per need, Order / Not yet (3-day rest) / Snooze / promotion
+offer after 4 accepted / demotion on dispute / expiry; delivery windows stretch the lead time so
+orders arrive on allowed days. Service clock follows the household clock once one exists. Both
+`propose_purchase` and `create_mandate` now name their fields, and tests send smuggled `household` /
+`autonomy` over MCP and assert both are ignored. Found on the way: a purchase approved days after it
+was held was dated to arrive before it was placed. Noticed, for 4b: day 101 of the demo still has
+four events at once, and opening ranges are wide (detergent 0-15 days) until a question is answered. Bedrock's part (kind notifications, understanding replies, instructions →
+time-bound mandates, measured on ~30 cases) moves into W6.
+
 **W2 design — AGREED WITH THE OWNER 2026-09-27.** *Numbers from arithmetic, words from the model.*
 - **Forecast is plain statistics, not AI.** Per item: days one pack lasts this household, with
   uncertainty. Starts from a labelled category default worth ~2 refills, or from the household's

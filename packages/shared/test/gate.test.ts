@@ -6,7 +6,13 @@ import { describe, it } from "node:test";
 // a ".ts" file, so a source file with real (non-type-only) imports of its
 // siblings cannot be loaded from src/ at all. `npm test` runs `tsc -b`
 // first; see the note in tsconfig.test.json.
-import { BELOW_CONFIDENCE_THRESHOLD, evaluateProposal, newMandate } from "@vouch/shared";
+import {
+  AUTONOMY_EXPIRED,
+  AUTONOMY_NOT_GRANTED,
+  BELOW_CONFIDENCE_THRESHOLD,
+  evaluateProposal,
+  newMandate,
+} from "@vouch/shared";
 import type { Mandate, PurchaseProposal } from "@vouch/shared";
 
 /**
@@ -38,6 +44,48 @@ function detergentMandate(overrides: Partial<Mandate> = {}): Mandate {
 function proposal(overrides: Partial<PurchaseProposal> = {}): PurchaseProposal {
   return { price: 12.49, quantity: 1, brand: "Brand A", confidence: 0.92, ...overrides };
 }
+
+describe("evaluateProposal — autonomy: may the agent buy this without being asked?", () => {
+  const auto = (until: string | null = null) =>
+    detergentMandate({ autonomy: { mode: "auto", until, delivery_days: null } });
+  const unprompted = (at?: string) => proposal({ initiatedBy: "forecast", at });
+
+  it("a new mandate grants no autonomy: an unprompted purchase is held", () => {
+    // Ask is the default — including for every mandate written before
+    // autonomy existed — so no household is bought for without choosing it.
+    const result = evaluateProposal(detergentMandate(), unprompted("2026-10-01T09:00:00Z"));
+    assert.deepEqual(result.triggeredRules, [AUTONOMY_NOT_GRANTED]);
+  });
+
+  it("holds an unprompted purchase in Remind mode too", () => {
+    const remind = detergentMandate({ autonomy: { mode: "remind", until: null, delivery_days: null } });
+    assert.ok(evaluateProposal(remind, unprompted("2026-10-01T09:00:00Z")).requiresApproval);
+  });
+
+  it("allows it in Auto mode, within the same limits as always", () => {
+    assert.equal(evaluateProposal(auto(), unprompted("2026-10-01T09:00:00Z")).withinBounds, true);
+    // Autonomy never widens the limits: over the price is still held.
+    assert.ok(evaluateProposal(auto(), proposal({ initiatedBy: "forecast", price: 19.99 })).requiresApproval);
+  });
+
+  it("honours an end date to the day, inclusive", () => {
+    assert.equal(evaluateProposal(auto("2026-12-25"), unprompted("2026-12-25T20:00:00Z")).withinBounds, true);
+    assert.deepEqual(evaluateProposal(auto("2026-12-25"), unprompted("2026-12-26T08:00:00Z")).triggeredRules, [
+      AUTONOMY_EXPIRED,
+    ]);
+  });
+
+  it("fails closed when it cannot tell whether autonomy has expired", () => {
+    assert.deepEqual(evaluateProposal(auto("2026-12-25"), unprompted(undefined)).triggeredRules, [AUTONOMY_EXPIRED]);
+  });
+
+  it("does not govern a household's own request at all", () => {
+    // "Order my usual" is authorised by the limits, as it always was. Remind
+    // or Ask mode must not stop a person buying their own detergent.
+    const result = evaluateProposal(detergentMandate(), proposal({ initiatedBy: "request" }));
+    assert.equal(result.withinBounds, true);
+  });
+});
 
 describe("evaluateProposal — in-bounds", () => {
   it("allows a proposal that satisfies every constraint", () => {

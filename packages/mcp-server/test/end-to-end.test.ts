@@ -378,6 +378,18 @@ describe("an agent cannot claim the household model's reasons", () => {
     assert.equal(result.vouch.authority.confidence_basis?.notes.need, "you asked for it");
   });
 
+  it("ignores a smuggled 'auto' on create_mandate — an agent cannot hand itself autonomy", async () => {
+    const mandate = await call<{ autonomy: { mode: string } }>(rig.client, "create_mandate", {
+      mandate_id: "m_smuggle_auto",
+      goal: "Keep dog food stocked",
+      constraints: { max_price: 50 },
+      requires_approval_if: ["price > max_price"],
+      authority_type: "explicit",
+      autonomy: { mode: "auto", until: null, delivery_days: null },
+    });
+    assert.equal(mandate.autonomy.mode, "ask");
+  });
+
   async function client_propose_with_extra() {
     return call<{ vouch: { household: unknown; authority: { confidence_basis: { notes: { need: string } } | null } } }>(
       rig.client,

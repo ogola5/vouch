@@ -67,7 +67,19 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     },
     async (args) => {
       try {
-        return json(service.createMandate(args));
+        // Fields named one by one: the service also accepts `autonomy`, which
+        // is household-only. A mandate an agent writes starts in "ask", so an
+        // agent cannot create itself the power to buy unprompted.
+        return json(
+          service.createMandate({
+            mandate_id: args.mandate_id,
+            goal: args.goal,
+            constraints: args.constraints,
+            requires_approval_if: args.requires_approval_if,
+            authority_type: args.authority_type,
+            confidence_threshold: args.confidence_threshold,
+          })
+        );
       } catch (error) {
         return failure(error);
       }

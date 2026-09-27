@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  Autonomy,
   evaluateProposal,
   newMandate,
   toMajorUnits,
@@ -92,6 +93,8 @@ export interface HouseholdProposalContext {
   days_per_pack: number;
   days_left: { low: number; median: number; high: number } | null;
   runout_risk: number;
+  /** The household day the delivery is requested for — inside its delivery window. */
+  delivery_day: number;
 }
 
 type ConfidenceBasis = NonNullable<Vouch["authority"]["confidence_basis"]>;
@@ -104,6 +107,12 @@ export interface CreateMandateInput {
   requires_approval_if: string[];
   authority_type: AuthorityType;
   confidence_threshold?: number;
+  /**
+   * HOUSEHOLD-ONLY. The create_mandate MCP tool does not pass it, so a
+   * mandate an agent writes always starts in "ask": an agent must not be able
+   * to hand itself the power to buy unprompted.
+   */
+  autonomy?: Mandate["autonomy"];
 }
 
 export interface ProposePurchaseInput {
@@ -169,6 +178,21 @@ export class VouchService {
   private readonly physicalEvidence: PhysicalEvidenceProvider;
   private readonly household: HouseholdProfile;
   private onPurchaseCompleted: VouchServiceDeps["onPurchaseCompleted"];
+  private onDisputeRecorded: ((disputed: { vouch: Vouch; mandate: Mandate }) => void) | undefined;
+  /**
+   * The system's "now". The wall clock by default; once a household is set
+   * up, its clock — so a fast-forwarded day is also the date the gate checks
+   * autonomy expiry against, and the date a Vouch records.
+   */
+  private now: () => Date = () => new Date();
+
+  setClock(now: () => Date): void {
+    this.now = now;
+  }
+
+  setDisputeListener(listener: (disputed: { vouch: Vouch; mandate: Mandate }) => void): void {
+    this.onDisputeRecorded = listener;
+  }
 
   constructor(deps: VouchServiceDeps) {
     this.store = deps.store;
@@ -248,6 +272,7 @@ export class VouchService {
       requires_approval_if: input.requires_approval_if,
       authority_type: input.authority_type,
       confidence_threshold: input.confidence_threshold,
+      autonomy: input.autonomy,
     });
     return this.store.saveMandate(mandate);
   }
@@ -290,12 +315,15 @@ export class VouchService {
       requires_approval_if?: string[];
       confidence_threshold?: number;
       status?: Mandate["status"];
+      /** Mode, end date, delivery days. Widening this is the household's power alone (W3: passkey). */
+      autonomy?: Mandate["autonomy"];
     }
   ): Mandate {
     const mandate = this.store.getMandate(mandateId);
     if (!mandate) {
       throw new Error(`No mandate with id "${mandateId}"`);
     }
+    if (changes.autonomy !== undefined) Autonomy.parse(changes.autonomy);
 
     if (changes.confidence_threshold !== undefined) {
       const t = changes.confidence_threshold;
@@ -320,14 +348,15 @@ export class VouchService {
       baseline_confidence_threshold:
         changes.confidence_threshold ?? mandate.baseline_confidence_threshold,
       status: changes.status ?? mandate.status,
+      autonomy: changes.autonomy ?? mandate.autonomy,
       history: {
         ...mandate.history,
         // An edit is an authority change, so it is stamped like one. Without
         // this, a mandate edited by hand and one moved by the adaptive loop
         // would be indistinguishable in the record.
-        last_adjusted: new Date().toISOString(),
+        last_adjusted: this.now().toISOString(),
       },
-      updated_at: new Date().toISOString(),
+      updated_at: this.now().toISOString(),
     });
   }
 
@@ -429,17 +458,20 @@ export class VouchService {
           days_per_pack: input.household.days_per_pack,
           days_left: input.household.days_left,
           runout_risk: input.household.runout_risk,
+          delivery_day: input.household.delivery_day,
         }
       : null;
 
+    const now = this.now().toISOString();
     const evaluation = evaluateProposal(mandate, {
       price: unitPriceMajor,
       quantity: input.quantity,
       brand: input.brand,
       confidence,
+      // Autonomy is checked only for what the agent started on its own.
+      initiatedBy: input.household ? "forecast" : "request",
+      at: now,
     });
-
-    const now = new Date().toISOString();
 
     // ---- The gate. Nothing below this line may call completeSession()
     // ---- unless `evaluation.withinBounds` is true.
@@ -593,6 +625,10 @@ export class VouchService {
       newThreshold: adjustment.newThreshold,
       delta: adjustment.delta,
     });
+    // Trust lost: a household that disputes a purchase gets asked next time
+    // (HouseholdAgent demotes the item from Auto to Ask). Narrows authority,
+    // so it happens at once, with no passkey.
+    this.onDisputeRecorded?.({ vouch: result.vouch, mandate: result.change.mandate });
 
     return {
       vouch: result.vouch,
@@ -698,7 +734,7 @@ export class VouchService {
     vouchId?: string;
   }): Promise<ProposePurchaseResult> {
     const { mandate, session, evaluation } = args;
-    const now = new Date().toISOString();
+    const now = this.now().toISOString();
     const orderId = session.order?.id ?? null;
 
     /*

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VouchService } from "./service.ts";
-import type { HouseholdAgent } from "./householdAgent.ts";
+import type { HouseholdAgent, NoticeResponse } from "./householdAgent.ts";
 
 /**
  * The HOUSEHOLD's surface, deliberately separate from the agent's MCP tools.
@@ -32,6 +32,8 @@ export const HOUSEHOLD_PREFIX = "/household";
 const MANDATE_PATH = /^\/household\/mandates\/([^/]+)$/;
 const VOUCH_ACTION_PATH = /^\/household\/vouches\/([^/]+)\/(approve|dispute)$/;
 const ITEM_STATEMENT_PATH = /^\/household\/items\/([^/]+)\/statement$/;
+const ITEM_RESPOND_PATH = /^\/household\/items\/([^/]+)\/respond$/;
+const ITEM_MODE_PATH = /^\/household\/items\/([^/]+)\/mode$/;
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -107,6 +109,34 @@ export async function handleHouseholdRequest(
           ? { kind: "level" as const, packs: Number(body.packs) }
           : { kind: kind === "runout" ? ("runout" as const) : ("plenty" as const) };
       send(res, 200, agent.record(decodeURIComponent(statementMatch[1]!), statement));
+      return true;
+    }
+    const respondMatch = ITEM_RESPOND_PATH.exec(pathname);
+    if (agent && respondMatch && method === "POST") {
+      const body = await readJson(req);
+      const simple = ["order", "not_yet", "accept_promotion", "decline_promotion"] as const;
+      const response = simple.find((r) => r === body.response);
+      const answer: NoticeResponse | null =
+        body.response === "snooze"
+          ? { response: "snooze", until_day: Number(body.until_day) }
+          : response
+            ? { response }
+            : null;
+      if (!answer) {
+        send(res, 400, { error: 'response must be "order", "not_yet", "snooze", "accept_promotion" or "decline_promotion"' });
+        return true;
+      }
+      send(res, 200, await agent.respond(decodeURIComponent(respondMatch[1]!), answer));
+      return true;
+    }
+    const modeMatch = ITEM_MODE_PATH.exec(pathname);
+    if (agent && modeMatch && method === "POST") {
+      const body = await readJson(req);
+      const change: Record<string, unknown> = {};
+      if (body.mode !== undefined) change.mode = body.mode;
+      if (body.until !== undefined) change.until = body.until;
+      if (body.delivery_days !== undefined) change.delivery_days = body.delivery_days;
+      send(res, 200, agent.setItemMode(decodeURIComponent(modeMatch[1]!), change));
       return true;
     }
 
