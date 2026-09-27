@@ -54,6 +54,23 @@ function seedProducts(): CatalogProduct[] {
   ];
 }
 
+/**
+ * Word-by-word catalog search: every word of the query must start a word in
+ * the product's id, title or brand. It used to be one substring match on the
+ * whole query, and a live agent asking for "Brand A detergent" got nothing
+ * back, because the title reads "Brand A Laundry Detergent" — so it told the
+ * household the product did not exist. Matching on word starts rather than
+ * substrings keeps "a" from matching the "a" inside "laundry".
+ */
+export function searchProducts(products: CatalogProduct[], query?: string): CatalogProduct[] {
+  const words = (query ?? "").toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  if (words.length === 0) return products;
+  return products.filter((p) => {
+    const haystack = `${p.id} ${p.title} ${p.brand}`.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+    return words.every((w) => haystack.some((h) => h.startsWith(w)));
+  });
+}
+
 export class Catalog {
   private products = new Map<string, CatalogProduct>();
 

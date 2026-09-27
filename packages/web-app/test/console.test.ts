@@ -148,10 +148,12 @@ describe("the demo levers work from the browser's side", () => {
 });
 
 describe("chat degrades without taking the console with it", () => {
-  // These run with no GEMINI_API_KEY in the test environment, which is the
+  // These run with no model key in the test environment, which is the
   // case that matters: the console is the household's evidence surface, and
   // evidence that vanishes when an unrelated API key expires is not evidence.
-  const configured = Boolean(process.env.GEMINI_API_KEY?.trim());
+  const configured = Boolean(
+    process.env.AWS_BEARER_TOKEN_BEDROCK?.trim() || process.env.GEMINI_API_KEY?.trim()
+  );
 
   it("reports chat status alongside the tool list", async () => {
     const health = await get<{ chat: { status: string; detail: string } }>("/api/health");

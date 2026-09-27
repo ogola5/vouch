@@ -52,8 +52,8 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
         requires_approval_if: z
           .array(z.string())
           .describe(
-            'Rule expressions the gate understands: "price > max_price", "new_brand", "quantity > N". ' +
-              "Anything else is treated as always-triggered, so the agent fails closed."
+            'Only these rule expressions are accepted: "price > max_price", "new_brand", and a quantity ' +
+              'limit written with a real whole number, e.g. "quantity > 2". Anything else is rejected.'
           ),
         authority_type: z.enum(["explicit", "delegated", "inferred"]),
         mandate_id: z.string().optional(),

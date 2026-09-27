@@ -1,4 +1,4 @@
-import { createVouchAgent, requireGeminiKey } from "./agent.ts";
+import { createVouchAgent, requireModelConfig } from "./agent.ts";
 
 /**
  * Walks the demo conversation against a running stack and prints, for each
@@ -11,11 +11,12 @@ import { createVouchAgent, requireGeminiKey } from "./agent.ts";
  * difference matters: a refusal the model invents produces no Vouch, no UCP
  * session and nothing the household can question later.
  *
- * Requires the stack to be running (`npm run dev:all`) and GEMINI_API_KEY set.
+ * Requires the stack to be running (`npm run dev:all`) and a model key set
+ * (AWS_BEARER_TOKEN_BEDROCK or GEMINI_API_KEY).
  */
 
 const mcpUrl = process.env.MCP_URL ?? "http://127.0.0.1:4020/mcp";
-const apiKey = requireGeminiKey();
+const model = requireModelConfig();
 
 const SCRIPT = [
   "Keep laundry detergent stocked for me. Stay under $15, I prefer Brand A, Brand B is fine as a fallback. Check monthly.",
@@ -25,13 +26,10 @@ const SCRIPT = [
   "What have you bought me so far?",
 ];
 
-const vouch = await createVouchAgent({
-  url: mcpUrl,
-  apiKey,
-  modelId: process.env.GEMINI_MODEL_ID,
-});
+const vouch = await createVouchAgent({ url: mcpUrl, model });
 
 console.log(`connected to ${mcpUrl}`);
+console.log(`model: ${model.provider} ${model.modelId}`);
 console.log(`tools: ${vouch.toolNames.join(", ")}\n`);
 
 try {

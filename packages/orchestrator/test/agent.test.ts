@@ -7,7 +7,21 @@ import { startMerchantServer } from "@vouch/mock-merchant";
 import { RuleBasedReasoningProvider } from "@vouch/reasoning";
 import { MockRingProvider } from "@vouch/ring-integration";
 import { HttpMerchantClient, VouchService, startVouchHttpServer } from "@vouch/mcp-server";
-import { createVouchAgent, VOUCH_SYSTEM_PROMPT, type VouchAgent } from "@vouch/orchestrator";
+import { BedrockModel } from "@strands-agents/sdk/models/bedrock";
+import { GoogleModel } from "@strands-agents/sdk/models/google";
+import {
+  buildModel,
+  createVouchAgent,
+  DEFAULT_BEDROCK_MODEL_ID,
+  DEFAULT_BEDROCK_REGION,
+  DEFAULT_MODEL_ID,
+  QuotaAwareRetryStrategy,
+  requireModelConfig,
+  resolveModelConfig,
+  VOUCH_SYSTEM_PROMPT,
+  type VouchAgent,
+} from "@vouch/orchestrator";
+import { ModelThrottledError } from "@strands-agents/sdk";
 
 /**
  * Two layers, because a model in the loop changes what is honestly testable.
@@ -17,15 +31,78 @@ import { createVouchAgent, VOUCH_SYSTEM_PROMPT, type VouchAgent } from "@vouch/o
  * still produce a fluent, plausible agent — the failure that survives a demo
  * and collapses under a judge's first question — so they are pinned.
  *
- * The second layer costs a real API call each and is SKIPPED unless
- * GEMINI_API_KEY is present. `npm test` does not load .env, so it skips by
- * default and CI stays free and deterministic; `npm run test:live` loads .env
- * and runs it. That split is deliberate: these assertions are worth making,
- * but not worth making on every save.
+ * The second layer costs a real API call each and is SKIPPED unless a model
+ * key is present. `npm test` does not load .env, so it skips by default and CI
+ * stays free and deterministic; `npm run test:live` loads .env and runs it.
+ * That split is deliberate: these assertions are worth making, but not worth
+ * making on every save.
  */
 
-const LIVE = Boolean(process.env.GEMINI_API_KEY?.trim());
-const liveOpts = { skip: LIVE ? false : "set GEMINI_API_KEY (npm run test:live) to run" };
+const LIVE_MODEL = resolveModelConfig();
+const liveOpts = {
+  skip: LIVE_MODEL ? false : "set AWS_BEARER_TOKEN_BEDROCK or GEMINI_API_KEY (npm run test:live) to run",
+};
+
+describe("choosing the model from the environment", () => {
+  it("uses Bedrock when its key is present, with the smoke-tested defaults", () => {
+    const config = resolveModelConfig({ AWS_BEARER_TOKEN_BEDROCK: "bedrock-key" });
+    assert.deepEqual(config, {
+      provider: "bedrock",
+      apiKey: "bedrock-key",
+      modelId: DEFAULT_BEDROCK_MODEL_ID,
+      region: DEFAULT_BEDROCK_REGION,
+    });
+  });
+
+  it("prefers Bedrock when both keys are set", () => {
+    // Bedrock has no 5-per-minute ceiling. The rollback is deleting its line
+    // from .env, so this ordering is the whole switch.
+    const config = resolveModelConfig({ AWS_BEARER_TOKEN_BEDROCK: "b", GEMINI_API_KEY: "g" });
+    assert.equal(config?.provider, "bedrock");
+  });
+
+  it("falls back to Gemini when only its key is set", () => {
+    const config = resolveModelConfig({ GEMINI_API_KEY: "g" });
+    assert.deepEqual(config, { provider: "google", apiKey: "g", modelId: DEFAULT_MODEL_ID });
+  });
+
+  it("honours model and region overrides", () => {
+    const config = resolveModelConfig({
+      AWS_BEARER_TOKEN_BEDROCK: "b",
+      BEDROCK_MODEL_ID: "us.amazon.nova-pro-v1:0",
+      AWS_REGION: "us-east-1",
+    });
+    assert.equal(config?.provider === "bedrock" && config.modelId, "us.amazon.nova-pro-v1:0");
+    assert.equal(config?.provider === "bedrock" && config.region, "us-east-1");
+  });
+
+  it("treats a blank key as absent, so `KEY=` in .env does not count as configured", () => {
+    // .env.example ships `AWS_BEARER_TOKEN_BEDROCK=` with nothing after it.
+    assert.equal(resolveModelConfig({ AWS_BEARER_TOKEN_BEDROCK: "  ", GEMINI_API_KEY: "" }), null);
+    assert.throws(() => requireModelConfig({}), /AWS_BEARER_TOKEN_BEDROCK/);
+  });
+
+  it("builds the matching Strands model without a network call", () => {
+    const bedrock = buildModel({ provider: "bedrock", apiKey: "b", modelId: "m", region: "us-west-2" });
+    assert.ok(bedrock instanceof BedrockModel);
+    assert.equal(bedrock.getConfig().modelId, "m");
+    assert.ok(buildModel({ provider: "google", apiKey: "g", modelId: "m" }) instanceof GoogleModel);
+  });
+
+  it("retries Bedrock throttling, which arrives typed rather than as a 429 string", () => {
+    // The custom strategy replaces Strands' default, so without this a
+    // Bedrock throttle would surface to the household mid-demo.
+    class Probe extends QuotaAwareRetryStrategy {
+      decide(error: unknown, attemptCount: number) {
+        return this.computeRetryDecision({ error, attemptCount } as never);
+      }
+    }
+    const probe = new Probe(4);
+    assert.equal(probe.decide(new ModelThrottledError("slow down"), 1).retry, true);
+    assert.equal(probe.decide(new ModelThrottledError("slow down"), 4).retry, false);
+    assert.equal(probe.decide(new Error("validation failed"), 1).retry, false);
+  });
+});
 
 describe("the system prompt keeps its non-negotiables", () => {
   it("names propose_purchase as the only way to buy", () => {
@@ -65,6 +142,26 @@ describe("the system prompt keeps its non-negotiables", () => {
     assert.match(VOUCH_SYSTEM_PROMPT, /leaves no record/i);
   });
 
+  it("says reading the mandate is not the check, and that a request is the go-ahead to propose", () => {
+    // Measured 2026-09-27 on Nova 2 Lite: 3 of 8 runs went get_mandate ->
+    // search_catalog -> refused in chat. Each self-refusal followed reading
+    // the mandate, so the prompt has to say that reading it is not checking it.
+    assert.match(VOUCH_SYSTEM_PROMPT, /even when you can already see it breaks a rule/i);
+    assert.match(VOUCH_SYSTEM_PROMPT, /it is not the check\. propose_purchase is the check/i);
+    assert.match(VOUCH_SYSTEM_PROMPT, /do not ask "would you like me to propose it\?"/i);
+  });
+
+  it("forbids offering an approval the agent has no tool for", () => {
+    // Same run: 3 of 8 replies offered to "proceed with this purchase despite
+    // these concerns". The missing tool makes that harmless; the prompt makes
+    // it stop misleading the household about where approval lives.
+    assert.match(VOUCH_SYSTEM_PROMPT, /never offer to/i);
+    assert.match(VOUCH_SYSTEM_PROMPT, /promises a power you do not have/i);
+    // After the first fix, 1 of 8 still closed with "Would you like me to
+    // proceed anyway?" — a sign-off habit, so the rule also sits last.
+    assert.match(VOUCH_SYSTEM_PROMPT, /Never end it with a question offering to proceed/);
+  });
+
   it("tells the agent not to inflate its own confidence", () => {
     // The open question in BUILD_PLAN.md §7 is that nothing validates this
     // number. Until that is resolved the prompt is the only thing discouraging
@@ -73,7 +170,7 @@ describe("the system prompt keeps its non-negotiables", () => {
   });
 });
 
-describe("the agent, live against Gemini", () => {
+describe(`the agent, live against ${LIVE_MODEL ? `${LIVE_MODEL.provider} ${LIVE_MODEL.modelId}` : "a model"}`, () => {
   let vouch: VouchAgent;
   let mcp: Server;
   let household: Server;
@@ -81,7 +178,7 @@ describe("the agent, live against Gemini", () => {
   let store: VouchStore;
 
   before(async () => {
-    if (!LIVE) return;
+    if (!LIVE_MODEL) return;
     const merchant = await startMerchantServer(0);
     merchantServer = merchant.server;
     store = VouchStore.open(":memory:");
@@ -96,15 +193,11 @@ describe("the agent, live against Gemini", () => {
     mcp = started.server;
     household = started.householdServer;
 
-    vouch = await createVouchAgent({
-      url: `${started.url}/mcp`,
-      apiKey: process.env.GEMINI_API_KEY!,
-      modelId: process.env.GEMINI_MODEL_ID,
-    });
+    vouch = await createVouchAgent({ url: `${started.url}/mcp`, model: LIVE_MODEL });
   });
 
   after(async () => {
-    if (!LIVE) return;
+    if (!LIVE_MODEL) return;
     await vouch.disconnect();
     household.close();
     mcp.close();

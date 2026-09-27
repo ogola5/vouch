@@ -6,137 +6,165 @@
 <title>Vouch Console</title>
 <style>
   :root {
-    --bg: #f7f7f5;
+    --bg: #f4f2ee;
     --panel: #ffffff;
+    --sunk: #faf9f6;
     --ink: #1b1a17;
-    --muted: #6b6862;
-    --line: #e2e0da;
-    --accent: #2f5d50;
+    --muted: #6b6760;
+    --faint: #9a958c;
+    --line: #e4e0d8;
+    --accent: #1f5c4d;
+    --accent-2: #2e7d69;
     --accent-ink: #ffffff;
-    --ok: #2f6b4f;
-    --ok-bg: #e6f2ea;
-    --hold: #8a5a12;
-    --hold-bg: #fdf0da;
-    --bad: #8d3030;
-    --bad-bg: #fae8e8;
-    --radius: 10px;
+    --accent-bg: #e3f0eb;
+    --ok: #256b4c;
+    --ok-bg: #e2f1e8;
+    --hold: #8a5610;
+    --hold-bg: #fcefd6;
+    --bad: #9a3131;
+    --bad-bg: #fbe6e4;
+    --info: #3a5a8c;
+    --info-bg: #e7eef9;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(30, 25, 15, .05), 0 4px 16px rgba(30, 25, 15, .05);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #16171a;
-      --panel: #1e2024;
-      --ink: #eceae5;
-      --muted: #9a968e;
-      --line: #2e3137;
-      --accent: #6fae99;
-      --accent-ink: #12211c;
-      --ok: #7cc3a0;
-      --ok-bg: #1d2e26;
-      --hold: #e0b165;
-      --hold-bg: #322818;
-      --bad: #e08c8c;
-      --bad-bg: #331f1f;
+      --bg: #121315; --panel: #1b1d20; --sunk: #16181a; --ink: #ecebe6; --muted: #a09c93;
+      --faint: #726e67; --line: #2b2e33; --accent: #6cc0a5; --accent-2: #8fd3bc; --accent-ink: #0f201a;
+      --accent-bg: #16302a; --ok: #7fcaa4; --ok-bg: #173026; --hold: #e8b464; --hold-bg: #33291a;
+      --bad: #eb8f8f; --bad-bg: #362020; --info: #9cb8e6; --info-bg: #1b2536;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
     }
   }
   :root[data-theme="dark"] {
-    --bg: #16171a; --panel: #1e2024; --ink: #eceae5; --muted: #9a968e;
-    --line: #2e3137; --accent: #6fae99; --accent-ink: #12211c;
-    --ok: #7cc3a0; --ok-bg: #1d2e26; --hold: #e0b165; --hold-bg: #322818;
-    --bad: #e08c8c; --bad-bg: #331f1f;
+    --bg: #121315; --panel: #1b1d20; --sunk: #16181a; --ink: #ecebe6; --muted: #a09c93;
+    --faint: #726e67; --line: #2b2e33; --accent: #6cc0a5; --accent-2: #8fd3bc; --accent-ink: #0f201a;
+    --accent-bg: #16302a; --ok: #7fcaa4; --ok-bg: #173026; --hold: #e8b464; --hold-bg: #33291a;
+    --bad: #eb8f8f; --bad-bg: #362020; --info: #9cb8e6; --info-bg: #1b2536;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
   }
 
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 80px; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+  [hidden] { display: none !important; }
 
-  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-  .tag { font-size: 13px; color: var(--muted); }
-  .status { margin-left: auto; font-size: 13px; display: flex; align-items: center; gap: 7px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
-  .dot.up { background: var(--ok); }
-  .dot.down { background: var(--bad); }
+  /* ---------- top bar ---------- */
+  .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 0 8px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand svg { width: 30px; height: 30px; }
+  .brand h1 { font-size: 20px; margin: 0; letter-spacing: -0.02em; font-weight: 700; }
+  .brand h1 span { font-weight: 500; color: var(--muted); }
+  .pills { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted);
+          background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .dot.up { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+  .dot.down { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-bg); }
 
-  .lede { color: var(--muted); font-size: 14px; margin: 8px 0 24px; max-width: 70ch; }
+  /* ---------- hero ---------- */
+  .hero { padding: 18px 0 20px; }
+  .hero h2 { font-size: clamp(22px, 3.2vw, 32px); line-height: 1.15; margin: 0 0 8px;
+             letter-spacing: -0.025em; font-weight: 700; max-width: 26ch; }
+  .hero p { margin: 0; color: var(--muted); max-width: 68ch; font-size: 15.5px; }
+  .pillars { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .pillar { font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
+            background: var(--accent-bg); color: var(--accent); }
 
-  section { background: var(--panel); border: 1px solid var(--line);
-            border-radius: var(--radius); padding: 18px; margin-bottom: 18px; }
-  h2 { font-size: 15px; margin: 0 0 4px; letter-spacing: -0.005em; }
-  .hint { font-size: 13px; color: var(--muted); margin: 0 0 14px; max-width: 72ch; }
+  /* ---------- panels ---------- */
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+           padding: 18px; box-shadow: var(--shadow); }
+  .panel + .panel { margin-top: 16px; }
+  .panel-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .panel h3 { font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .hint { font-size: 13px; color: var(--muted); margin: 2px 0 14px; max-width: 70ch; }
+  .empty { color: var(--muted); font-size: 14px; padding: 14px; text-align: center;
+           border: 1px dashed var(--line); border-radius: 10px; }
 
-  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  /* ---------- the tour ---------- */
+  .tour { margin-bottom: 18px; }
+  .tour-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .progress { flex: 1; min-width: 120px; max-width: 260px; height: 6px; background: var(--sunk);
+              border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
+  .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .5s ease; }
+  .beats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .beat-tab { text-align: left; border: 1px solid var(--line); background: var(--sunk); border-radius: 11px;
+              padding: 10px 11px; cursor: pointer; color: var(--ink); font: inherit; display: flex; gap: 9px;
+              align-items: flex-start; transition: border-color .15s, background .15s; }
+  .beat-tab:hover { border-color: var(--accent); }
+  .beat-tab.sel { border-color: var(--accent); background: var(--accent-bg); }
+  .beat-num { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+              font-size: 12px; font-weight: 700; border: 1.5px solid var(--faint); color: var(--muted); }
+  .beat-tab.done .beat-num { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .beat-title { font-size: 13px; font-weight: 600; line-height: 1.3; }
+  .beat-sub { font-size: 11.5px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+  .beat-detail { margin-top: 12px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px;
+                 padding: 16px; border-radius: 12px; background: var(--sunk); border: 1px solid var(--line); }
+  .beat-detail h4 { margin: 0 0 6px; font-size: 16px; letter-spacing: -0.01em; }
+  .beat-detail p { margin: 0 0 10px; font-size: 14px; }
+  .watch { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; color: var(--ink); }
+  .watch li { margin-bottom: 4px; }
+  .diff { border-left: 3px solid var(--accent); padding: 2px 0 2px 12px; }
+  .diff .eyebrow { color: var(--accent); }
+  .diff p { font-size: 13.5px; color: var(--ink); margin: 6px 0 0; }
+  .beat-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .fine { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
-  .card { border: 1px solid var(--line); border-radius: 8px; padding: 13px; background: var(--bg); }
-  .card h3 { font-size: 14px; margin: 0 0 3px; }
-  .card .sub { font-size: 12.5px; color: var(--muted); }
+  /* ---------- layout ---------- */
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 16px; align-items: start; }
+  .sticky { position: sticky; top: 12px; }
 
-  label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
-  input, select, textarea {
-    width: 100%; padding: 8px 10px; font: inherit; font-size: 14px;
-    color: var(--ink); background: var(--bg);
-    border: 1px solid var(--line); border-radius: 7px;
+  /* ---------- controls ---------- */
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  input, select {
+    width: 100%; padding: 9px 11px; font: inherit; font-size: 14px; color: var(--ink);
+    background: var(--sunk); border: 1px solid var(--line); border-radius: 9px;
   }
   input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .row { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); align-items: end; }
-
   button {
-    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 7px;
+    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 9px; font-weight: 500;
     border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+    transition: border-color .15s, background .15s, transform .05s;
   }
   button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  button.small { padding: 5px 10px; font-size: 13px; }
+  button.primary:hover { background: var(--accent-2); }
+  button.ghost { background: transparent; }
+  button.small { padding: 5px 11px; font-size: 13px; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .badge { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px;
-           border-radius: 999px; letter-spacing: 0.01em; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 650;
+           padding: 2px 9px; border-radius: 999px; letter-spacing: 0.01em; white-space: nowrap; }
   .badge.ok { background: var(--ok-bg); color: var(--ok); }
   .badge.hold { background: var(--hold-bg); color: var(--hold); }
   .badge.bad { background: var(--bad-bg); color: var(--bad); }
-  .badge.plain { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .badge.info { background: var(--info-bg); color: var(--info); }
+  .badge.plain { background: var(--sunk); color: var(--muted); border: 1px solid var(--line); }
+  .chip { display: inline-block; font-size: 12px; background: var(--hold-bg); color: var(--hold);
+          padding: 2px 9px; border-radius: 6px; margin: 2px 4px 2px 0; font-weight: 500; }
 
-  .chip { display: inline-block; font-size: 11.5px; font-family: ui-monospace, monospace;
-          background: var(--hold-bg); color: var(--hold);
-          padding: 2px 7px; border-radius: 5px; margin: 2px 4px 2px 0; }
-
-  .threshold { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-  .threshold .delta { font-size: 13px; font-weight: 500; }
-  .up-arrow { color: var(--bad); }
-  .down-arrow { color: var(--ok); }
-
-  .vouch { border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 10px; background: var(--bg); }
-  .vouch-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-  .vouch-title { font-weight: 600; }
-  .price { font-variant-numeric: tabular-nums; }
-  .meta { font-size: 12.5px; color: var(--muted); }
-  .actions { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
-
-  .explain { margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--accent);
-             background: var(--panel); border-radius: 0 6px 6px 0; font-size: 14px; }
-
-  .empty { color: var(--muted); font-size: 14px; font-style: italic; padding: 6px 0; }
-  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px;
-           background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px;
-           font-size: 14px; max-width: 90vw; z-index: 50; }
-  .toast.err { background: var(--bad); color: #fff; }
-  .note { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line);
-          padding-top: 10px; margin-top: 14px; }
-  code { font-family: ui-monospace, monospace; font-size: 12.5px; }
-
-  /* ---- conversation ---- */
-  .transcript { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px;
-                max-height: 46vh; overflow-y: auto; }
-  .transcript:empty { display: none; }
-  .turn { display: flex; flex-direction: column; gap: 6px; }
-  .said { align-self: flex-end; max-width: 78%; background: var(--accent); color: var(--accent-ink);
-          padding: 9px 13px; border-radius: 14px 14px 3px 14px; }
-  .replied { align-self: flex-start; max-width: 88%; background: var(--bg);
-             border: 1px solid var(--line); padding: 10px 13px; border-radius: 14px 14px 14px 3px;
+  /* ---------- conversation ---------- */
+  .chat { display: flex; flex-direction: column; }
+  .transcript { display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px;
+                min-height: 180px; max-height: 56vh; overflow-y: auto; padding: 4px 2px; }
+  .transcript-empty { color: var(--muted); font-size: 13.5px; text-align: center; margin: auto; padding: 30px 10px; }
+  .turn { display: flex; flex-direction: column; gap: 7px; animation: rise .25s ease; }
+  .said { align-self: flex-end; max-width: 82%; background: var(--accent); color: var(--accent-ink);
+          padding: 9px 14px; border-radius: 16px 16px 4px 16px; }
+  .replied { align-self: flex-start; max-width: 92%; background: var(--sunk);
+             border: 1px solid var(--line); padding: 10px 14px; border-radius: 16px 16px 16px 4px;
              white-space: pre-wrap; }
-
+  .who { font-size: 11px; color: var(--faint); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
   /*
    * The agent's working, shown rather than hidden. Most assistants suppress
    * tool calls so the result feels like magic; here, watching it check the
@@ -144,138 +172,279 @@
    * demonstrated. Rendered as plain phrases, not function signatures.
    */
   .work { align-self: flex-start; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .step { font-size: 12px; color: var(--muted); background: var(--bg);
+  .step { font-size: 12px; color: var(--muted); background: var(--panel);
           border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
-  .step.stop { background: var(--hold-bg); color: var(--hold); border-color: transparent; font-weight: 600; }
+  .step.stop { background: var(--hold-bg); color: var(--hold); border-color: transparent; font-weight: 650; }
   .step.failed { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
-
+  .arrow { color: var(--faint); font-size: 11px; }
   .composer { display: flex; gap: 8px; }
-  .composer input { flex: 1; }
-  .chip-btn { border-radius: 999px; margin: 0 6px 6px 0; color: var(--muted); }
-  .thinking { align-self: flex-start; font-size: 13px; color: var(--muted); font-style: italic; }
-  .banner { font-size: 13.5px; padding: 10px 13px; border-radius: 8px; margin-bottom: 12px;
+  .composer input { flex: 1; padding: 11px 13px; }
+  .chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip-btn { border-radius: 999px; color: var(--muted); background: var(--sunk); }
+  .thinking { align-self: flex-start; font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .dots span { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--muted);
+               margin-right: 3px; animation: blink 1.2s infinite; }
+  .dots span:nth-child(2) { animation-delay: .2s; } .dots span:nth-child(3) { animation-delay: .4s; }
+  .banner { font-size: 13.5px; padding: 10px 13px; border-radius: 10px; margin-bottom: 12px;
             background: var(--hold-bg); color: var(--hold); }
   .banner.err { background: var(--bad-bg); color: var(--bad); }
+
+  /* ---------- mandate ---------- */
+  .mandate { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--sunk); }
+  .mandate + .mandate { margin-top: 10px; }
+  .mandate-head { display: flex; gap: 10px; align-items: flex-start; }
+  .mandate-head h4 { margin: 0; font-size: 15px; }
+  .mandate-head .sub { font-size: 12.5px; color: var(--muted); }
+  .terms { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+  .term { font-size: 12.5px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 9px; }
+  .term b { font-weight: 650; }
+  .meter-wrap { margin-top: 6px; }
+  .meter-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .threshold { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .delta { font-size: 13px; font-weight: 650; }
+  .up-arrow { color: var(--bad); }
+  .down-arrow { color: var(--ok); }
+  .meter { position: relative; height: 10px; border-radius: 999px; background: var(--panel);
+           border: 1px solid var(--line); margin: 8px 0 4px; }
+  .meter-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; width: 0;
+                background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .9s cubic-bezier(.2,.8,.2,1); }
+  .meter-fill.tight { background: linear-gradient(90deg, var(--accent), var(--hold)); }
+  .meter-mark { position: absolute; top: -5px; width: 2px; height: 18px; background: var(--ink); border-radius: 2px; }
+  .meter-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--faint); }
+  .meter-note { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .actions { display: flex; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
+  .note { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line);
+          padding-top: 12px; margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  /* ---------- record ---------- */
+  .pending { border: 1.5px solid var(--hold); background: var(--hold-bg); color: var(--ink);
+             border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .pending h4 { margin: 0 0 4px; color: var(--hold); font-size: 14px; }
+  .pending-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; font-size: 14px; }
+  .vouch { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 10px;
+           background: var(--sunk); transition: box-shadow .3s; }
+  .vouch.fresh { animation: glow 2.4s ease; }
+  .vouch-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .vouch-title { font-weight: 650; }
+  .price { font-variant-numeric: tabular-nums; margin-left: auto; font-weight: 650; }
+  .meta { font-size: 12.5px; color: var(--muted); }
+  .chain { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 4px; }
+  .link { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 7px 9px; min-width: 0; }
+  .link .eyebrow { font-size: 10px; }
+  .link .val { font-size: 12.5px; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
+  .link.ok { border-color: var(--ok); } .link.ok .val { color: var(--ok); }
+  .link.hold { border-color: var(--hold); } .link.hold .val { color: var(--hold); }
+  .link.none .val { color: var(--muted); font-weight: 500; }
+  .explain { margin-top: 10px; padding: 10px 13px; border-left: 3px solid var(--accent);
+             background: var(--panel); border-radius: 0 9px 9px 0; font-size: 14px; }
+  .ring-note { font-size: 12.5px; color: var(--muted); margin-top: 12px; }
+
+  /* ---------- demo controls ---------- */
+  details.controls { margin-top: 16px; }
+  details.controls > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
+  details.controls > summary::-webkit-details-marker { display: none; }
+  details.controls > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+  details.controls[open] > summary::before { transform: rotate(90deg); }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .card { border: 1px solid var(--line); border-radius: 11px; padding: 13px; background: var(--sunk); }
+  .card h5 { font-size: 14px; margin: 0 0 3px; }
+  .card .sub { font-size: 12.5px; color: var(--muted); }
+  .subhead { font-size: 13px; font-weight: 650; margin: 18px 0 8px; }
+
+  .honesty { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .honesty ul { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
+  .honesty li { margin-bottom: 4px; }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px;
+           background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px;
+           font-size: 14px; max-width: 90vw; z-index: 50; box-shadow: var(--shadow); animation: rise .2s ease; }
+  .toast.err { background: var(--bad); color: #fff; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .toast { animation: none; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  @keyframes glow { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { animation: none !important; transition: none !important; }
+  }
+
+  @media (max-width: 980px) {
+    .main { grid-template-columns: 1fr; }
+    .sticky { position: static; }
+    .beat-detail { grid-template-columns: 1fr; }
+    .honesty { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .beats { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+    .beat-tab { justify-content: center; padding: 8px 4px; }
+    .beat-tab .beat-text { display: none; }
+    .chain { grid-template-columns: 1fr 1fr; }
+    .pills { margin-left: 0; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <header>
-    <h1>Vouch Console</h1>
-    <span class="tag">household trust layer &middot; demo control</span>
-    <span class="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 2.5 4.5 7v8.2c0 7.1 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.2 11.5-14.3V7L16 2.5Z" fill="var(--accent)"/>
+        <path d="m10.5 16.2 3.8 3.8 7.4-8" fill="none" stroke="var(--accent-ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>Vouch <span>Console</span></h1>
+    </div>
+    <div class="pills">
+      <span class="pill" id="modelPill" hidden></span>
+      <span class="pill"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
+    </div>
   </header>
-  <p class="lede">
-    Everything here goes through the same MCP tools an agent calls. Nothing on this page
-    decides anything — the gate lives in the server, so what you see is what an agent sees.
-  </p>
 
-  <!-- 0. THE CONVERSATION -->
-  <section>
-    <h2>Talk to it</h2>
-    <p class="hint">
-      Say what you want in your own words. You'll see every step it takes — checking your
-      mandate is the point, not an implementation detail worth hiding.
+  <section class="hero">
+    <h2>Your agent can spend your money. Vouch makes it answer for it.</h2>
+    <p>
+      A real gate before every order, a record you can question, and authority that tightens
+      when the agent gets it wrong. Nothing on this page decides anything: the gate lives in the
+      server, so what you see here is exactly what an agent sees.
     </p>
-
-    <div id="chatBanner" hidden></div>
-    <div id="transcript" class="transcript"></div>
-
-    <div class="composer">
-      <input id="chatInput" placeholder="Keep detergent stocked, under $15 a month…"
-             autocomplete="off" />
-      <button class="primary" id="chatSend">Send</button>
-    </div>
-
-    <!-- Examples, not a menu. "Be adaptable" is about accepting the
-         household's own words; these exist to show the range, not to be the
-         only way in. -->
-    <div id="chips" style="margin-top:10px">
-      <button class="small chip-btn" data-say="Keep laundry detergent stocked. Under $15, I prefer Brand A, Brand B is fine too.">set a mandate</button>
-      <button class="small chip-btn" data-say="What detergent can you actually buy right now?">what's available</button>
-      <button class="small chip-btn" data-say="Restock the Brand A detergent, one bottle.">restock it</button>
-      <button class="small chip-btn" data-say="Buy the Brand C one, the 96-load bottle.">try the expensive one</button>
-      <button class="small chip-btn" data-say="What have you bought me so far?">what did you buy</button>
+    <div class="pillars">
+      <span class="pillar">Gate before the order</span>
+      <span class="pillar">A record you can question</span>
+      <span class="pillar">Trust that adapts</span>
     </div>
   </section>
 
-  <!-- 1. THE WORLD -->
-  <section>
-    <h2>1. The world</h2>
-    <p class="hint">
-      The merchant's catalogue. Change a price and the agent has to react to a number it
-      didn't choose — this is what makes the demo live rather than narrated.
-    </p>
-    <div class="grid" id="catalog"><div class="empty">loading…</div></div>
+  <!-- THE TOUR: the demo script, as something you can do rather than read -->
+  <section class="panel tour" aria-labelledby="tourTitle">
+    <div class="tour-head">
+      <div>
+        <div class="eyebrow">Try it yourself</div>
+        <h3 id="tourTitle">The whole idea in five steps</h3>
+      </div>
+      <div class="progress" aria-hidden="true"><div id="tourBar"></div></div>
+      <span class="meta" id="tourProgress">0 of 5</span>
+    </div>
+    <div class="beats" id="beats" role="tablist"></div>
+    <div class="beat-detail" id="beatDetail"></div>
   </section>
 
-  <!-- 2. MANDATES -->
-  <section>
-    <h2>2. Mandates — what the agent is allowed to do</h2>
-    <p class="hint">
-      The confidence threshold is the number the adaptive loop moves. Watch it after a dispute.
-    </p>
-    <div class="grid" id="mandates"><div class="empty">loading…</div></div>
-
-    <div class="note">
-      <button class="small" id="toggleForm">New mandate</button>
-      <button class="small" id="seedBtn">Use the demo defaults</button>
-      <span class="meta" id="editingLabel"></span>
-    </div>
-
-    <div id="mandateForm" hidden style="margin-top:12px">
-      <div class="row">
-        <div style="grid-column:1/-1">
-          <label for="fGoal">Goal — what you're asking for, in your words</label>
-          <input id="fGoal" placeholder="Keep laundry detergent stocked" />
+  <div class="main">
+    <!-- THE CONVERSATION -->
+    <div class="sticky">
+      <section class="panel chat" aria-labelledby="chatTitle">
+        <div class="panel-head">
+          <h3 id="chatTitle">Talk to your agent</h3>
+          <span class="badge info">stands in for Alexa+</span>
         </div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div><label for="fMax">Max price ($)</label><input id="fMax" type="number" step="0.01" min="0" placeholder="15" /></div>
-        <div><label for="fQty">Max quantity</label><input id="fQty" type="number" min="1" placeholder="2" /></div>
-        <div><label for="fPref">Preferred brand</label><input id="fPref" placeholder="Brand A" /></div>
-        <div><label for="fFall">Fallback brand</label><input id="fFall" placeholder="Brand B" /></div>
-        <div>
-          <label for="fThr">Confidence threshold</label>
-          <input id="fThr" type="number" min="0" max="1" step="0.01" placeholder="0.85" />
-        </div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div style="grid-column:1/-1">
-          <label>Hold for approval when…</label>
-          <div>
-            <label class="meta" style="display:inline-block;margin-right:14px">
-              <input type="checkbox" id="rPrice" checked style="width:auto"> over the max price
-            </label>
-            <label class="meta" style="display:inline-block;margin-right:14px">
-              <input type="checkbox" id="rBrand" checked style="width:auto"> an unfamiliar brand
-            </label>
-            <label class="meta" style="display:inline-block">
-              <input type="checkbox" id="rQty" checked style="width:auto"> over the max quantity
-            </label>
+        <p class="hint">
+          Say it in your own words. Every step it takes is shown — watching it check your mandate
+          is the point, not a detail worth hiding.
+        </p>
+        <div id="chatBanner" hidden></div>
+        <div id="transcript" class="transcript">
+          <div class="transcript-empty" id="transcriptEmpty">
+            Nothing said yet. Start with step 1 above, or type below.
           </div>
         </div>
-      </div>
-      <div class="actions" style="margin-top:12px">
-        <button class="primary" id="saveMandate">Save</button>
-        <button id="cancelMandate">Cancel</button>
-      </div>
-      <div class="note" id="formHint">
-        Editing a mandate is the household's power, not the agent's — it goes through
-        <code>/api/household</code>, which is a different surface from the tools the agent can call.
-        An agent able to raise its own spending limit would make the gate decorative.
-      </div>
+        <div class="composer">
+          <input id="chatInput" placeholder="Keep detergent stocked, under $15 a month…" autocomplete="off" />
+          <button class="primary" id="chatSend">Send</button>
+        </div>
+        <!-- Examples, not a menu: they show the range, they are not the only way in. -->
+        <div class="chips" id="chips">
+          <button class="small chip-btn" data-say="What detergent can you actually buy right now?">what's available?</button>
+          <button class="small chip-btn" data-say="What have you bought me so far?">what did you buy?</button>
+          <button class="small chip-btn" data-say="What am I allowing you to do right now?">what am I allowing?</button>
+        </div>
+      </section>
     </div>
-  </section>
 
-  <!-- 3. PROPOSE -->
-  <section>
-    <h2>3. Propose a purchase</h2>
-    <p class="hint">
-      This is the gate. The server opens a real UCP checkout session, drives it to
-      <code>ready_for_complete</code>, then decides whether it may become an order.
-      Price is read from the merchant, never from this form.
+    <!-- THE HOUSEHOLD VIEW -->
+    <div>
+      <section class="panel" aria-labelledby="mandTitle">
+        <div class="panel-head">
+          <h3 id="mandTitle">What it's allowed to do</h3>
+          <span class="eyebrow">mandates</span>
+        </div>
+        <p class="hint">
+          The bar is the confidence the agent must reach to buy on its own. A dispute pushes it up;
+          only you can set where it starts.
+        </p>
+        <div id="mandates"><div class="empty">loading…</div></div>
+
+        <div class="note">
+          <button class="small" id="toggleForm">New mandate</button>
+          <button class="small" id="seedBtn">Use the demo mandate</button>
+          <span class="meta" id="editingLabel"></span>
+        </div>
+
+        <div id="mandateForm" hidden style="margin-top:12px">
+          <div class="row">
+            <div style="grid-column:1/-1">
+              <label for="fGoal">Goal: what you're asking for, in your words</label>
+              <input id="fGoal" placeholder="Keep laundry detergent stocked" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div><label for="fMax">Max price ($)</label><input id="fMax" type="number" step="0.01" min="0" placeholder="15" /></div>
+            <div><label for="fQty">Max quantity</label><input id="fQty" type="number" min="1" placeholder="2" /></div>
+            <div><label for="fPref">Preferred brand</label><input id="fPref" placeholder="Brand A" /></div>
+            <div><label for="fFall">Fallback brand</label><input id="fFall" placeholder="Brand B" /></div>
+            <div><label for="fThr">Confidence threshold</label><input id="fThr" type="number" min="0" max="1" step="0.01" placeholder="0.85" /></div>
+          </div>
+          <div style="margin-top:10px">
+            <label>Hold for my approval when…</label>
+            <label class="meta" style="display:inline-block;margin-right:14px"><input type="checkbox" id="rPrice" checked style="width:auto"> over the max price</label>
+            <label class="meta" style="display:inline-block;margin-right:14px"><input type="checkbox" id="rBrand" checked style="width:auto"> an unfamiliar brand</label>
+            <label class="meta" style="display:inline-block"><input type="checkbox" id="rQty" checked style="width:auto"> over the max quantity</label>
+          </div>
+          <div class="actions">
+            <button class="primary" id="saveMandate">Save</button>
+            <button id="cancelMandate">Cancel</button>
+          </div>
+          <div class="fine" id="formHint">
+            Editing a mandate is your power, not the agent's. It goes through a separate household
+            surface the agent has no tool for — an agent able to raise its own limit would make the gate decorative.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="recTitle">
+        <div class="panel-head">
+          <h3 id="recTitle">What it actually did</h3>
+          <span class="eyebrow">the record</span>
+        </div>
+        <p class="hint">
+          One Vouch per action: bought, held or disputed. Each shows the chain from your mandate
+          to the checkout, the order and the doorstep.
+        </p>
+        <div id="pending"></div>
+        <div id="vouches"><div class="empty">loading…</div></div>
+        <div class="ring-note">
+          <strong>About the doorstep:</strong> Ring publishes no “package delivered” event.
+          <em>corroborated</em> means a motion event fell inside the window the order was expected
+          in — correlation, never proof. <em>unconfirmed</em> means no such event yet.
+          <em>not applicable</em> means nothing was bought. In this console the doorbell is simulated
+          and nothing scripts it, so a new order reads <em>unconfirmed</em>.
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- DEMO CONTROLS: playing "the world" and acting as the agent by hand -->
+  <details class="panel controls" id="controls">
+    <summary>
+      <h3>Demo controls</h3>
+      <span class="meta">change prices, or act as the agent by hand</span>
+    </summary>
+
+    <div class="subhead">The store — change a price and the agent has to react to a number it didn't choose</div>
+    <div class="grid" id="catalog"><div class="empty">loading…</div></div>
+
+    <div class="subhead">Propose a purchase by hand — goes through the same gate the agent uses</div>
+    <p class="hint" style="margin-top:0">
+      The server opens a real UCP checkout, takes it to <code>ready_for_complete</code>, then decides
+      whether it may become an order. The price is read from the merchant, never from this form.
     </p>
     <div class="row">
       <div><label for="pMandate">Mandate</label><select id="pMandate"></select></div>
@@ -286,21 +455,29 @@
       <div><button class="primary" id="proposeBtn">Propose</button></div>
     </div>
     <div id="proposeResult"></div>
-  </section>
+  </details>
 
-  <!-- 4. THE RECORD -->
-  <section>
-    <h2>4. The record — what the agent actually did</h2>
-    <p class="hint">
-      Completed, held and disputed actions together. A held purchase left a real checkout
-      session parked one call short of an order.
-    </p>
-    <div id="vouches"><div class="empty">loading…</div></div>
-    <div class="note">
-      <strong>On the doorstep evidence:</strong> Ring publishes no “package delivered” event.
-      <code>corroborated</code> means a motion event fell inside the window the order was
-      expected in — correlation, never proof. <code>unconfirmed</code> means no such event yet.
-      <code>not_applicable</code> means nothing was bought.
+  <section class="panel honesty-wrap" style="margin-top:16px">
+    <div class="panel-head"><h3>What's real here, and what's simulated</h3></div>
+    <div class="honesty">
+      <div>
+        <span class="badge ok">real</span>
+        <ul>
+          <li>The MCP server and its gate — it runs before the order, not after</li>
+          <li>The UCP checkout lifecycle (open standard), implemented on both sides</li>
+          <li>The record, the dispute and the threshold change, stored in SQLite</li>
+          <li>The agent: a Strands agent calling the same tools this page calls</li>
+        </ul>
+      </div>
+      <div>
+        <span class="badge plain">simulated</span>
+        <ul>
+          <li>The merchant's catalog, and payment — no money moves</li>
+          <li>The doorbell in this console (a real webhook receiver exists, off by default)</li>
+          <li>The written explanations and threshold rules — deterministic, not a model yet</li>
+          <li>Alexa+ itself — this chat stands in for it</li>
+        </ul>
+      </div>
     </div>
   </section>
 
@@ -309,14 +486,26 @@
 <script type="module">
 const $ = (id) => document.getElementById(id);
 let state = { mandates: [], vouches: [], catalog: [] };
+let chatReady = false;
 let lastThresholds = new Map();
+let seenVouches = null;
+let selectedBeat = null;
+let askedWhy = readFlag("vouch.askedWhy");
+
+function readFlag(key) {
+  try { return sessionStorage.getItem(key) === "1"; } catch { return false; }
+}
+function setFlag(key) {
+  try { sessionStorage.setItem(key, "1"); } catch { /* private mode: the tour just forgets */ }
+}
 
 function toast(msg, isError = false) {
+  document.querySelectorAll(".toast").forEach((t) => t.remove());
   const el = document.createElement("div");
   el.className = "toast" + (isError ? " err" : "");
   el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), isError ? 6000 : 3200);
+  setTimeout(() => el.remove(), isError ? 6000 : 3400);
 }
 
 async function api(path, options) {
@@ -333,19 +522,261 @@ const callTool = (name, args) =>
     body: JSON.stringify(args ?? {}),
   });
 
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+const escapeHtml = esc;
 function money(n) { return "$" + Number(n).toFixed(2); }
 
-function statusBadge(status) {
-  if (status === "Complete") return '<span class="badge ok">Complete</span>';
-  if (status === "PendingApproval") return '<span class="badge hold">Held for approval</span>';
-  if (status === "Cancelled") return '<span class="badge bad">Cancelled</span>';
-  return `<span class="badge plain">${status}</span>`;
+/* ---------- household language ---------- */
+
+function ruleText(rule) {
+  if (rule === "price > max_price") return "price over your limit";
+  if (rule === "new_brand") return "a brand you haven't approved";
+  if (/^quantity\s*>\s*(\d+)/.test(rule)) return `more than ${rule.match(/(\d+)/)[1]} at once`;
+  if (rule.includes("confidence")) return "agent not confident enough";
+  if (rule.includes("paused")) return "mandate is paused";
+  return rule;
+}
+const REASON_TEXT = {
+  price_drop: "price dropped",
+  preferred_brand: "your preferred brand",
+  fallback_brand: "your fallback brand",
+  prior_purchase: "bought before",
+  approved_by_household: "you approved it",
+};
+const reasonText = (r) => REASON_TEXT[r] ?? r.replace(/_/g, " ");
+
+function productTitle(p) {
+  const hit = state.catalog.find((c) => c.id === p || c.title === p);
+  return hit ? hit.title.replace(/ Laundry Detergent/, "") : p;
 }
 
-function correlationBadge(status) {
-  if (status === "corroborated") return '<span class="badge ok">Ring: corroborated</span>';
-  if (status === "unconfirmed") return '<span class="badge plain">Ring: unconfirmed</span>';
-  return '<span class="badge plain">Ring: not applicable</span>';
+/* ---------- the tour ---------- */
+
+function firstActiveMandate() {
+  return state.mandates.find((m) => m.status !== "paused") ?? state.mandates[0];
+}
+
+const BEATS = [
+  {
+    title: "Give it a rule",
+    sub: "a mandate",
+    done: () => state.mandates.length > 0,
+    heading: "Tell it what it may do, in plain words.",
+    body: "You say “keep detergent stocked, under $15”. The agent writes that down as a mandate — a structured limit the server checks before any order, not a setting buried in an app.",
+    watch: [
+      "the chat shows “wrote down your instruction”",
+      "a mandate appears on the right with its limits and a confidence bar",
+    ],
+    diff: "Payment-side controls such as Know-Your-Agent verify <em>which</em> agent is acting. A mandate says <em>what this household allows</em>, in the household's words, and the server enforces it.",
+    actions: [
+      { label: "Say it to the agent", primary: true, chat: true,
+        run: () => say("Keep laundry detergent stocked for me. Stay under $15 a bottle, I prefer Brand A, Brand B is fine as a fallback. Check monthly.") },
+      { label: "Or create it without the model", run: seedMandate },
+    ],
+  },
+  {
+    title: "It buys, within bounds",
+    sub: "a real checkout",
+    done: () => state.vouches.some((v) => v.action.status === "Complete"),
+    heading: "A price drops and it restocks, on its own.",
+    body: "Brand A drops to $12.49. The agent looks up the real product, then proposes the purchase. The server opens a real UCP checkout session, checks it against your mandate, and completes the order because it is inside your limits.",
+    watch: [
+      "the steps “looked at what's in stock → checked it against your mandate”",
+      "a green <b>Bought</b> Vouch, with a chain: mandate passed → session completed → order id → doorstep",
+    ],
+    diff: "Protocol-level receipts already exist (ACP shipped them first). What's new is who reads this one: <em>you</em>, in plain language, next to the rule that allowed it.",
+    actions: [
+      { label: "Drop Brand A to $12.49 and ask it to restock", primary: true, chat: true,
+        run: async () => { await setPrice("detergent-brand-a", 12.49);
+          await agentOr("Brand A detergent just dropped to $12.49. Please restock one bottle.",
+            { product: "detergent-brand-a", brand: "Brand A", confidence: 0.93, reason: ["price_drop", "preferred_brand"] }); } },
+    ],
+  },
+  {
+    title: "It gets stopped",
+    sub: "the gate holds",
+    done: () => state.vouches.some((v) => v.action.status === "PendingApproval"),
+    heading: "Ask for something outside the rule, and watch it stop.",
+    body: "Brand C costs $27.80, over your $15 limit and a brand you never approved. The agent is told to <em>propose</em> it anyway rather than refuse on its own, so the refusal becomes a recorded act of the gate, not an opinion in a chat.",
+    watch: [
+      "the amber step “checked it against your mandate”",
+      "an amber <b>Held</b> Vouch naming the exact rules that stopped it",
+      "the session is <b>parked at ready_for_complete</b>: a real checkout, one call short of an order, with no order id",
+      "a “Needs your OK” box — only you can approve it; the agent has no tool that can",
+    ],
+    diff: "The gate runs on the checkout's own <code>ready_for_complete → completed</code> step, so a stopped purchase leaves real evidence behind. A refusal that happened before any checkout would prove nothing about whether the check works.",
+    actions: [
+      { label: "Ask for the $27.80 Brand C", primary: true, chat: true,
+        run: () => agentOr("Buy the Brand C detergent, the 96-load one. I want the biggest bottle.",
+          { product: "detergent-brand-c", brand: "Brand C", confidence: 0.9, reason: ["larger_size"] }) },
+    ],
+  },
+  {
+    title: "Ask why",
+    sub: "answered from the record",
+    done: () => askedWhy,
+    heading: "Question it, and get the actual reason.",
+    body: "Ask “why didn't you buy it?”. The agent reads the Vouch and explains the boundary that stopped it, instead of making up a story after the fact. You can also press <b>Why?</b> on any Vouch.",
+    watch: [
+      "the step “looked up why” or “read back your history” — the answer comes from the record",
+      "it names the real rules: over your limit, unapproved brand",
+    ],
+    diff: "Most agents explain themselves from memory, which is a second guess. This explanation is looked up from the same record the gate wrote.",
+    actions: [
+      { label: "Ask why it didn't buy Brand C", primary: true, chat: true,
+        run: () => { markWhy(); return say("Why didn't you buy the Brand C one?"); } },
+      { label: "Or press Why? on the held Vouch", run: () => {
+          const held = state.vouches.find((v) => v.action.status === "PendingApproval");
+          if (!held) { toast("Do step 3 first — there's nothing held yet.", true); return; }
+          document.getElementById(`vouch-${held.vouch_id}`)?.scrollIntoView({ block: "center" });
+          explain(held.vouch_id);
+        } },
+    ],
+  },
+  {
+    title: "Dispute it, and it tightens",
+    sub: "the adaptive loop",
+    done: () => state.vouches.some((v) => v.dispute) &&
+      state.vouches.some((v) => (v.authority.triggered_rules ?? []).some((r) => r.includes("confidence"))),
+    heading: "Say “I didn't want that” — and the agent gets more careful.",
+    body: "Dispute the purchase from step 2. The mandate's confidence bar moves up on its own (0.85 → 0.88), with no settings edit. Then replay a borderline decision — one confident enough to pass your original 0.85, but not the new bar. Before the dispute it would have gone through; now it is held.",
+    watch: [
+      "the bar on the mandate jumps, with “▲ tightened” and a marker where you set it",
+      "the replayed purchase comes back <b>Held</b>, stopped by “agent not confident enough”",
+    ],
+    diff: "This is the part nothing else does. KYA, ACP and UCP are static permission systems. Here, what happened last time changes what the agent may do next — a trust relationship, not a log. A good streak loosens it again, but never below the number you set.",
+    actions: [
+      { label: "1 · Dispute the bought item", primary: true, run: disputeLatestPurchase },
+      { label: "2 · Replay a borderline purchase", run: replayBorderline },
+    ],
+    fine: "The replay acts as the agent with a confidence chosen between your original number and the new one (0.86 for 0.85 → 0.88), so the comparison is exact rather than depending on the number the model happens to report. Each dispute adds 0.03 — a step set by a 12,000-decision simulation, because bigger steps made the agent refuse most of what you actually wanted.",
+  },
+];
+
+function renderTour() {
+  const done = BEATS.map((b) => b.done());
+  const count = done.filter(Boolean).length;
+  $("tourProgress").textContent = `${count} of ${BEATS.length} done`;
+  $("tourBar").style.width = `${(count / BEATS.length) * 100}%`;
+
+  const next = done.findIndex((d) => !d);
+  const sel = selectedBeat ?? (next === -1 ? BEATS.length - 1 : next);
+
+  $("beats").innerHTML = BEATS.map((b, i) => `
+    <button class="beat-tab ${done[i] ? "done" : ""} ${i === sel ? "sel" : ""}" role="tab"
+            aria-selected="${i === sel}" data-beat="${i}">
+      <span class="beat-num">${done[i] ? "✓" : i + 1}</span>
+      <span class="beat-text"><span class="beat-title">${b.title}</span><br><span class="beat-sub">${b.sub}</span></span>
+    </button>`).join("");
+  $("beats").querySelectorAll("[data-beat]").forEach((t) =>
+    t.addEventListener("click", () => { selectedBeat = Number(t.dataset.beat); renderTour(); }));
+
+  const b = BEATS[sel];
+  const allDone = count === BEATS.length;
+  $("beatDetail").innerHTML = `
+    <div>
+      <div class="eyebrow">Step ${sel + 1}${done[sel] ? " · done" : ""}</div>
+      <h4>${b.heading}</h4>
+      <p>${b.body}</p>
+      <div class="beat-actions">
+        ${b.actions.map((a, j) => `<button class="${a.primary ? "primary" : ""}" data-act="${j}">${a.label}</button>`).join("")}
+      </div>
+      ${b.fine ? `<div class="fine">${b.fine}</div>` : ""}
+      ${b.actions.some((a) => a.chat) && !chatReady
+        ? `<div class="fine">No model is configured, so these buttons act as the agent directly through the same gate.</div>` : ""}
+      ${allDone ? `<div class="fine"><b>That's the whole loop:</b> rule → real action → real stop → real explanation → real adjustment.</div>` : ""}
+    </div>
+    <div>
+      <div class="eyebrow">What to watch for</div>
+      <ul class="watch">${b.watch.map((w) => `<li>${w}</li>`).join("")}</ul>
+      <div class="diff" style="margin-top:14px">
+        <div class="eyebrow">Why this is different</div>
+        <p>${b.diff}</p>
+      </div>
+    </div>`;
+  $("beatDetail").querySelectorAll("[data-act]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try { await b.actions[Number(btn.dataset.act)].run(); }
+      catch (e) { toast(e.message, true); }
+      finally { btn.disabled = false; }
+    }));
+}
+
+function markWhy() { askedWhy = true; setFlag("vouch.askedWhy"); }
+
+async function setPrice(id, price) {
+  await api("/api/price", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_id: id, price }),
+  });
+  toast(`${productTitle(id)} is now ${money(price)}`);
+  await refresh();
+}
+
+/** Ask the agent; with no model configured, act as it directly through the same gate. */
+async function agentOr(message, direct) {
+  if (!chatReady) await chatBanner(); // re-ask rather than trust a stale answer
+  if (chatReady) return say(message);
+  return proposeDirect(direct);
+}
+
+async function proposeDirect({ product, brand, confidence, reason, quantity = 1, mandateId }) {
+  const mandate = state.mandates.find((m) => m.mandate_id === mandateId) ?? firstActiveMandate();
+  if (!mandate) throw new Error("Do step 1 first — the agent has no authority without a mandate.");
+  const { text } = await callTool("propose_purchase", {
+    mandate_id: mandate.mandate_id, product_id: product, brand, quantity, confidence, reason,
+  });
+  const r = JSON.parse(text);
+  toast(r.outcome === "completed" ? "Bought — inside the mandate." : "Held — the gate stopped it.");
+  await refresh();
+  return r;
+}
+
+async function seedMandate() {
+  await callTool("create_mandate", {
+    mandate_id: "m_detergent",
+    goal: "Keep laundry detergent stocked",
+    constraints: { max_price: 15, preferred_brand: "Brand A", fallback_brand: "Brand B" },
+    requires_approval_if: ["price > max_price", "new_brand", "quantity > 2"],
+    authority_type: "explicit",
+    confidence_threshold: 0.85,
+  });
+  toast("Mandate created.");
+  await refresh();
+}
+
+function disputeLatestPurchase() {
+  const bought = state.vouches.find((v) => v.action.status === "Complete" && !v.dispute);
+  if (!bought) { toast("Nothing bought to dispute yet — do step 2 first.", true); return; }
+  document.getElementById(`vouch-${bought.vouch_id}`)?.scrollIntoView({ block: "center" });
+  openDispute(bought.vouch_id);
+}
+
+async function replayBorderline() {
+  const disputed = state.vouches.find((v) => v.dispute);
+  if (!disputed) {
+    toast("Dispute something first (button 1), or the replay will simply go through.", true);
+    return;
+  }
+  const m = state.mandates.find((x) => x.mandate_id === disputed.authority.mandate_id);
+  const base = m?.baseline_confidence_threshold ?? 0.85;
+  const now = m?.confidence_threshold ?? base;
+  if (now <= base) {
+    toast("The bar is back at your own number (a good streak loosened it), so there's no gap to replay into.", true);
+    return;
+  }
+  // Borderline by construction: would clear the household's own number, not the tightened one.
+  const confidence = Math.max(base, Math.floor(((base + now) / 2) * 100) / 100);
+  toast(`Replaying at confidence ${confidence.toFixed(2)} — passes ${base.toFixed(2)}, not ${now.toFixed(2)}`);
+  await proposeDirect({
+    product: "detergent-brand-a", brand: "Brand A", confidence,
+    reason: ["price_drop", "preferred_brand"], mandateId: disputed.authority.mandate_id,
+  });
 }
 
 /* ---------- rendering ---------- */
@@ -355,13 +786,12 @@ function renderCatalog() {
   if (!state.catalog.length) { el.innerHTML = '<div class="empty">no products</div>'; return; }
   el.innerHTML = state.catalog.map((p) => `
     <div class="card">
-      <h3>${p.title}</h3>
-      <div class="sub">${p.brand} &middot; <code>${p.id}</code></div>
+      <h5>${esc(p.title)}</h5>
+      <div class="sub">${esc(p.brand)} · <code>${esc(p.id)}</code></div>
       <div class="row" style="margin-top:10px">
         <div>
           <label for="price-${p.id}">Price (USD)</label>
-          <input id="price-${p.id}" type="number" step="0.01" min="0"
-                 value="${(p.price / 100).toFixed(2)}" />
+          <input id="price-${p.id}" type="number" step="0.01" min="0" value="${(p.price / 100).toFixed(2)}" />
         </div>
         <div><button class="small" data-price-for="${p.id}">Set</button></div>
       </div>
@@ -370,20 +800,13 @@ function renderCatalog() {
   el.querySelectorAll("[data-price-for]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.priceFor;
-      const price = Number(document.getElementById(`price-${id}`).value);
-      try {
-        await api("/api/price", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ product_id: id, price }),
-        });
-        toast(`${id} is now ${money(price)}`);
-        await refresh();
-chatBanner();
-      } catch (e) { toast(e.message, true); }
+      try { await setPrice(id, Number(document.getElementById(`price-${id}`).value)); }
+      catch (e) { toast(e.message, true); }
     });
   });
 }
+
+const pct = (x) => Math.max(0, Math.min(100, ((x - 0.5) / 0.5) * 100));
 
 function renderMandates() {
   const el = $("mandates");
@@ -393,40 +816,65 @@ function renderMandates() {
   }
 
   el.innerHTML = state.mandates.map((m) => {
-    const prev = lastThresholds.get(m.mandate_id);
-    let delta = "";
-    if (prev !== undefined && prev !== m.confidence_threshold) {
-      const up = m.confidence_threshold > prev;
-      delta = `<span class="delta ${up ? "up-arrow" : "down-arrow"}">
-                 ${up ? "▲ tightened" : "▼ loosened"} from ${prev.toFixed(2)}</span>`;
-    }
     const c = m.constraints ?? {};
+    const base = m.baseline_confidence_threshold ?? m.confidence_threshold;
+    const now = m.confidence_threshold;
+    const prev = lastThresholds.get(m.mandate_id);
+    const diff = now - base;
+    let delta = "";
+    if (Math.abs(diff) > 1e-9) {
+      delta = `<span class="delta ${diff > 0 ? "up-arrow" : "down-arrow"}">${diff > 0 ? "▲ tightened" : "▼ loosened"} from ${base.toFixed(2)}</span>`;
+    }
+    const terms = [
+      c.max_price !== undefined ? `<span class="term">under <b>${money(c.max_price)}</b></span>` : "",
+      c.quantity !== undefined ? `<span class="term">up to <b>${esc(c.quantity)}</b></span>` : "",
+      c.preferred_brand ? `<span class="term">prefers <b>${esc(c.preferred_brand)}</b></span>` : "",
+      c.fallback_brand ? `<span class="term">or <b>${esc(c.fallback_brand)}</b></span>` : "",
+    ].join("");
+    const paused = m.status === "paused";
     return `
-      <div class="card">
-        <h3>${m.goal}</h3>
-        <div class="sub"><code>${m.mandate_id}</code> &middot; ${m.status}</div>
-        <div style="margin:10px 0 2px">
-          <div class="threshold">${m.confidence_threshold.toFixed(2)} ${delta}</div>
-          <div class="sub">confidence threshold</div>
+      <div class="mandate">
+        <div class="mandate-head">
+          <div style="flex:1">
+            <h4>${esc(m.goal)}</h4>
+            <div class="sub"><code>${esc(m.mandate_id)}</code> · ${esc(m.authority_type ?? "")}</div>
+          </div>
+          ${paused ? '<span class="badge hold">paused</span>' : '<span class="badge ok">active</span>'}
         </div>
-        <div class="sub" style="margin-top:8px">
-          max ${c.max_price !== undefined ? money(c.max_price) : "—"}
-          &middot; prefers ${c.preferred_brand ?? "—"}
+        <div class="terms">${terms}</div>
+        <div class="meter-wrap">
+          <div class="meter-top">
+            <span class="threshold">${now.toFixed(2)}</span>
+            <span class="meta">confidence needed to buy alone</span>
+            ${delta}
+          </div>
+          <div class="meter">
+            <div class="meter-fill ${diff > 0 ? "tight" : ""}" data-meter="${esc(m.mandate_id)}"
+                 data-from="${pct(prev ?? now)}" data-to="${pct(now)}"></div>
+            <div class="meter-mark" style="left:calc(${pct(base)}% - 1px)" title="the number you set: ${base.toFixed(2)}"></div>
+          </div>
+          <div class="meter-scale"><span>0.50 · trusting</span><span>1.00 · asks about everything</span></div>
+          <div class="meter-note">
+            You set <b>${base.toFixed(2)}</b> (the black mark) ·
+            ${m.history.undisputed_actions} undisputed · ${m.history.disputed_actions} disputed
+          </div>
         </div>
-        <div class="sub">
-          ${m.history.undisputed_actions} undisputed &middot; ${m.history.disputed_actions} disputed
-        </div>
-        <div style="margin-top:8px">
-          ${(m.requires_approval_if ?? []).map((r) => `<span class="chip">${r}</span>`).join("")}
+        <div style="margin-top:10px">
+          <span class="meta">Asks you first when:</span>
+          ${(m.requires_approval_if ?? []).map((r) => `<span class="chip">${esc(ruleText(r))}</span>`).join("")}
         </div>
         <div class="actions">
-          <button class="small" data-edit="${m.mandate_id}">Edit</button>
-          <button class="small" data-pause="${m.mandate_id}" data-paused="${m.status === "paused"}">
-            ${m.status === "paused" ? "Resume" : "Pause"}
-          </button>
+          <button class="small" data-edit="${esc(m.mandate_id)}">Edit</button>
+          <button class="small" data-pause="${esc(m.mandate_id)}" data-paused="${paused}">${paused ? "Resume" : "Pause"}</button>
         </div>
       </div>`;
   }).join("");
+
+  // Animate from the last value seen to the new one, so a dispute visibly MOVES the bar.
+  el.querySelectorAll("[data-meter]").forEach((bar) => {
+    bar.style.width = bar.dataset.from + "%";
+    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = bar.dataset.to + "%"; }));
+  });
 
   el.querySelectorAll("[data-edit]").forEach((b) =>
     b.addEventListener("click", () =>
@@ -438,10 +886,7 @@ function renderMandates() {
         // pause_mandate stays an agent tool: pausing only ever REMOVES the
         // agent's authority, and resuming restores what the household already
         // granted rather than widening it.
-        await callTool("pause_mandate", {
-          mandate_id: b.dataset.pause,
-          paused: b.dataset.paused !== "true",
-        });
+        await callTool("pause_mandate", { mandate_id: b.dataset.pause, paused: b.dataset.paused !== "true" });
         await refresh();
       } catch (e) { toast(e.message, true); }
     }));
@@ -449,61 +894,120 @@ function renderMandates() {
   state.mandates.forEach((m) => lastThresholds.set(m.mandate_id, m.confidence_threshold));
 }
 
+function statusBadge(v) {
+  const s = v.action.status;
+  if (s === "Complete" && (v.decision.reason ?? []).includes("approved_by_household"))
+    return '<span class="badge ok">Bought · you approved</span>';
+  if (s === "Complete") return '<span class="badge ok">Bought</span>';
+  if (s === "PendingApproval") return '<span class="badge hold">Held for you</span>';
+  if (s === "Cancelled") return '<span class="badge bad">Cancelled</span>';
+  return `<span class="badge plain">${esc(s)}</span>`;
+}
+
+function correlationText(status) {
+  if (status === "corroborated") return "corroborated";
+  if (status === "unconfirmed") return "unconfirmed";
+  return "not applicable";
+}
+
+function chain(v) {
+  const rules = v.authority.triggered_rules ?? [];
+  const s = v.action.status;
+  const approved = (v.decision.reason ?? []).includes("approved_by_household");
+  const gate = rules.length === 0
+    ? { cls: "ok", val: "passed" }
+    : approved ? { cls: "ok", val: "held → you said yes" } : { cls: "hold", val: "held" };
+  const session = s === "Complete"
+    ? { cls: "ok", val: "completed" }
+    : s === "PendingApproval" ? { cls: "hold", val: "parked at ready_for_complete" }
+    : { cls: "none", val: s.toLowerCase() };
+  const order = v.evidence.digital.order_id;
+  const ring = v.evidence.physical.correlation_status;
+  const link = (label, o, title = "") =>
+    `<div class="link ${o.cls}" title="${esc(title)}"><div class="eyebrow">${label}</div><div class="val">${esc(o.val)}</div></div>`;
+  return `<div class="chain">
+    ${link("Mandate check", gate)}
+    ${link("UCP checkout", session, v.action.ucp_session_id ?? "")}
+    ${link("Order", order ? { cls: "ok", val: order.slice(0, 12) } : { cls: "none", val: "none placed" }, order ?? "")}
+    ${link("Doorstep (Ring)", { cls: ring === "corroborated" ? "ok" : "none", val: correlationText(ring) })}
+  </div>`;
+}
+
+function renderPending() {
+  const held = state.vouches.filter((v) => v.action.status === "PendingApproval");
+  if (!held.length) { $("pending").innerHTML = ""; return; }
+  $("pending").innerHTML = `<div class="pending">
+    <h4>Needs your OK · ${held.length}</h4>
+    <div class="meta">The agent can't approve these — it has no tool for it. Only you can, here.</div>
+    ${held.map((v) => `<div class="pending-row">
+        <span>${esc(productTitle(v.decision.product))} · <b>${money(v.decision.price)}</b></span>
+        ${(v.authority.triggered_rules ?? []).map((r) => `<span class="chip">${esc(ruleText(r))}</span>`).join("")}
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="small" data-explain="${v.vouch_id}">Why?</button>
+          <button class="small primary" data-approve="${v.vouch_id}">Approve</button>
+        </span>
+      </div>`).join("")}
+  </div>`;
+  $("pending").querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => approve(b.dataset.approve)));
+  $("pending").querySelectorAll("[data-explain]").forEach((b) => b.addEventListener("click", () => {
+    document.getElementById(`vouch-${b.dataset.explain}`)?.scrollIntoView({ block: "center" });
+    explain(b.dataset.explain);
+  }));
+}
+
 function renderVouches() {
   const el = $("vouches");
+  const first = seenVouches === null;
+  const seen = seenVouches ?? new Set();
   if (!state.vouches.length) {
-    el.innerHTML = '<div class="empty">Nothing yet — propose a purchase above.</div>';
+    el.innerHTML = '<div class="empty">Nothing yet. When the agent acts, the record shows up here.</div>';
+    seenVouches = seen;
     return;
   }
   el.innerHTML = state.vouches.map((v) => {
-    const rules = (v.authority.triggered_rules ?? [])
-      .map((r) => `<span class="chip">${r}</span>`).join("");
-    const order = v.evidence.digital.order_id;
+    const rules = (v.authority.triggered_rules ?? []).map((r) => `<span class="chip">${esc(ruleText(r))}</span>`).join("");
+    const reasons = (v.decision.reason ?? []).map(reasonText).join(" · ");
+    const fresh = !first && !seen.has(v.vouch_id);
+    const d = v.dispute;
     return `
-      <div class="vouch" id="vouch-${v.vouch_id}">
+      <div class="vouch ${fresh ? "fresh" : ""}" id="vouch-${v.vouch_id}">
         <div class="vouch-head">
-          ${statusBadge(v.action.status)}
-          <span class="vouch-title">${v.decision.product}</span>
+          ${statusBadge(v)}
+          <span class="vouch-title">${esc(productTitle(v.decision.product))}</span>
+          ${d ? '<span class="badge bad">Disputed</span>' : ""}
           <span class="price">${money(v.decision.price)}</span>
-          ${v.dispute ? '<span class="badge bad">Disputed</span>' : ""}
         </div>
-        <div class="meta">
-          ${new Date(v.created_at).toLocaleString()} &middot;
-          session <code>${(v.action.ucp_session_id ?? "—").slice(0, 8)}</code> &middot;
-          ${order ? `order <code>${order.slice(0, 14)}</code>` : "no order placed"}
+        <div class="meta" style="margin-top:4px">
+          ${new Date(v.created_at).toLocaleString()} · confidence ${esc(v.confidence)}${reasons ? ` · ${esc(reasons)}` : ""}
         </div>
-        <div style="margin-top:7px">${correlationBadge(v.evidence.physical.correlation_status)}</div>
-        ${rules ? `<div style="margin-top:7px"><span class="meta">stopped by:</span> ${rules}</div>` : ""}
-        ${v.dispute ? `<div class="meta" style="margin-top:6px">disputed: “${v.dispute.reason ?? "no reason given"}”</div>` : ""}
+        ${chain(v)}
+        ${rules ? `<div style="margin-top:8px"><span class="meta">Stopped by:</span> ${rules}</div>` : ""}
+        ${d ? `<div class="meta" style="margin-top:8px">You disputed it: “${esc(d.reason ?? "no reason given")}”${
+          d.confidence_threshold_delta ? ` — threshold <b class="up-arrow">+${d.confidence_threshold_delta.toFixed(2)}</b>` : ""}</div>` : ""}
         <div class="actions">
           <button class="small" data-explain="${v.vouch_id}">Why?</button>
-          ${v.action.status === "PendingApproval"
-            ? `<button class="small primary" data-approve="${v.vouch_id}">Approve</button>` : ""}
-          ${v.action.status === "Complete" && !v.dispute
-            ? `<button class="small" data-dispute-open="${v.vouch_id}">I didn't want that</button>` : ""}
+          ${v.action.status === "PendingApproval" ? `<button class="small primary" data-approve="${v.vouch_id}">Approve</button>` : ""}
+          ${v.action.status === "Complete" && !d ? `<button class="small" data-dispute-open="${v.vouch_id}">I didn't want that</button>` : ""}
         </div>
         <div data-dispute-slot="${v.vouch_id}"></div>
         <div data-explain-slot="${v.vouch_id}"></div>
       </div>`;
   }).join("");
 
-  el.querySelectorAll("[data-explain]").forEach((b) =>
-    b.addEventListener("click", () => explain(b.dataset.explain)));
-  el.querySelectorAll("[data-approve]").forEach((b) =>
-    b.addEventListener("click", () => approve(b.dataset.approve)));
-  el.querySelectorAll("[data-dispute-open]").forEach((b) =>
-    b.addEventListener("click", () => openDispute(b.dataset.disputeOpen)));
+  state.vouches.forEach((v) => seen.add(v.vouch_id));
+  seenVouches = seen;
+
+  el.querySelectorAll("[data-explain]").forEach((b) => b.addEventListener("click", () => explain(b.dataset.explain)));
+  el.querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => approve(b.dataset.approve)));
+  el.querySelectorAll("[data-dispute-open]").forEach((b) => b.addEventListener("click", () => openDispute(b.dataset.disputeOpen)));
 }
 
 /*
- * An inline form, NOT window.prompt().
- *
- * prompt() is blocked outright in VS Code's Simple Browser and in sandboxed
- * iframes, where it returns null — so the handler took the "user cancelled"
- * path and did nothing at all, silently. That is how this button came to
- * "not work": the backend was correct the whole time and the browser never
- * let the question be asked. A demo surface should not depend on a dialog
- * the host may refuse to show.
+ * An inline form, NOT a browser dialog. The native prompt dialog is blocked
+ * outright in VS Code's Simple Browser and in sandboxed iframes, where it
+ * returns null — so the handler took the "user cancelled" path and did
+ * nothing at all, silently. A demo surface should not depend on a dialog the
+ * host may refuse to show.
  */
 function openDispute(vouchId) {
   const slot = document.querySelector(`[data-dispute-slot="${vouchId}"]`);
@@ -514,12 +1018,12 @@ function openDispute(vouchId) {
       <label for="dr-${vouchId}">What was wrong with it?</label>
       <input id="dr-${vouchId}" value="I didn't want that" />
       <div class="actions">
-        <button class="small primary" data-dispute-confirm="${vouchId}">Dispute it</button>
+        <button class="small primary" data-dispute-send="${vouchId}">Dispute it</button>
         <button class="small" data-dispute-cancel="${vouchId}">Cancel</button>
       </div>
+      <div class="fine">Watch the confidence bar on the mandate when you press it.</div>
     </div>`;
-
-  slot.querySelector("[data-dispute-confirm]").addEventListener("click", () =>
+  slot.querySelector("[data-dispute-send]").addEventListener("click", () =>
     dispute(vouchId, document.getElementById(`dr-${vouchId}`).value));
   slot.querySelector("[data-dispute-cancel]").addEventListener("click", () => {
     slot.dataset.open = "0";
@@ -530,22 +1034,29 @@ function openDispute(vouchId) {
 
 function renderSelectors() {
   const m = $("pMandate");
-  m.innerHTML = state.mandates.map((x) => `<option value="${x.mandate_id}">${x.goal}</option>`).join("");
+  const keepM = m.value;
+  m.innerHTML = state.mandates.map((x) => `<option value="${esc(x.mandate_id)}">${esc(x.goal)}</option>`).join("");
+  if (keepM) m.value = keepM;
   const p = $("pProduct");
+  const keepP = p.value;
   p.innerHTML = state.catalog
-    .map((x) => `<option value="${x.id}" data-brand="${x.brand}">${x.title} — ${money(x.price / 100)}</option>`)
+    .map((x) => `<option value="${esc(x.id)}" data-brand="${esc(x.brand)}">${esc(x.title)} — ${money(x.price / 100)}</option>`)
     .join("");
+  if (keepP) p.value = keepP;
 }
 
 /* ---------- actions ---------- */
 
 async function explain(vouchId) {
+  markWhy();
   const slot = document.querySelector(`[data-explain-slot="${vouchId}"]`);
-  slot.innerHTML = '<div class="explain">thinking…</div>';
+  if (!slot) return;
+  slot.innerHTML = '<div class="explain">looking it up…</div>';
   try {
     const { text } = await callTool("explain_vouch", { vouch_id: vouchId });
-    slot.innerHTML = `<div class="explain">${text}</div>`;
-  } catch (e) { slot.innerHTML = `<div class="explain">${e.message}</div>`; }
+    slot.innerHTML = `<div class="explain"><div class="eyebrow">From the record</div>${esc(text)}</div>`;
+  } catch (e) { slot.innerHTML = `<div class="explain">${esc(e.message)}</div>`; }
+  renderTour();
 }
 
 // Approve and dispute go through /api/household, not through the MCP tool
@@ -554,15 +1065,12 @@ async function explain(vouchId) {
 // to approve its own purchases is a request, while a missing tool is a
 // guarantee.
 const household = (path, options) =>
-  api(`/api/household/${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  api(`/api/household/${path}`, { headers: { "Content-Type": "application/json" }, ...options });
 
 async function approve(vouchId) {
   try {
     await household(`vouches/${encodeURIComponent(vouchId)}/approve`, { method: "POST", body: "{}" });
-    toast("Approved — the held session became an order.");
+    toast("Approved — the parked checkout became an order.");
     await refresh();
   } catch (e) { toast(e.message, true); }
 }
@@ -573,8 +1081,9 @@ async function dispute(vouchId, reason) {
       method: "POST",
       body: JSON.stringify({ reason }),
     });
-    toast(`Threshold ${r.threshold_before.toFixed(2)} → ${r.threshold_after.toFixed(2)}`);
+    toast(`Mandate tightened: ${r.threshold_before.toFixed(2)} → ${r.threshold_after.toFixed(2)}`);
     await refresh();
+    document.querySelector(".mandate")?.scrollIntoView({ block: "center" });
   } catch (e) { toast(e.message, true); }
 }
 
@@ -591,12 +1100,10 @@ function openForm(mandate) {
   $("fPref").value = c.preferred_brand ?? "";
   $("fFall").value = c.fallback_brand ?? "";
   $("fThr").value = mandate?.confidence_threshold ?? 0.85;
-
   const rules = mandate?.requires_approval_if ?? ["price > max_price", "new_brand"];
   $("rPrice").checked = rules.includes("price > max_price");
   $("rBrand").checked = rules.includes("new_brand");
   $("rQty").checked = rules.some((r) => r.startsWith("quantity >"));
-
   $("editingLabel").textContent = mandate ? `editing ${mandate.mandate_id}` : "";
   $("mandateForm").hidden = false;
   $("fGoal").focus();
@@ -616,14 +1123,12 @@ function readForm() {
   if (Number.isFinite(qty)) constraints.quantity = qty;
   if ($("fPref").value.trim()) constraints.preferred_brand = $("fPref").value.trim();
   if ($("fFall").value.trim()) constraints.fallback_brand = $("fFall").value.trim();
-
   const rules = [];
   if ($("rPrice").checked) rules.push("price > max_price");
   if ($("rBrand").checked) rules.push("new_brand");
   // The quantity rule carries its own number, so it can only be offered when
   // a max quantity was actually given.
   if ($("rQty").checked && Number.isFinite(qty)) rules.push(`quantity > ${qty}`);
-
   const thr = parseFloat($("fThr").value);
   return {
     goal: $("fGoal").value.trim(),
@@ -633,9 +1138,7 @@ function readForm() {
   };
 }
 
-$("toggleForm").addEventListener("click", () => {
-  if ($("mandateForm").hidden) openForm(null); else closeForm();
-});
+$("toggleForm").addEventListener("click", () => { if ($("mandateForm").hidden) openForm(null); else closeForm(); });
 $("cancelMandate").addEventListener("click", closeForm);
 
 $("saveMandate").addEventListener("click", async () => {
@@ -643,10 +1146,7 @@ $("saveMandate").addEventListener("click", async () => {
   if (!body.goal) { toast("Give it a goal — that's what the agent is acting on.", true); return; }
   try {
     if (editingId) {
-      await household(`mandates/${encodeURIComponent(editingId)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
+      await household(`mandates/${encodeURIComponent(editingId)}`, { method: "PATCH", body: JSON.stringify(body) });
       toast("Mandate updated.");
     } else {
       await callTool("create_mandate", { ...body, authority_type: "explicit" });
@@ -674,36 +1174,23 @@ $("proposeBtn").addEventListener("click", async () => {
     const r = JSON.parse(text);
     $("proposeResult").innerHTML = `<div class="explain">
       <strong>${r.outcome === "completed" ? "Bought it." : "Held for approval."}</strong>
-      Session ended <code>${r.session_status}</code>. ${r.explanation}</div>`;
+      Session ended <code>${esc(r.session_status)}</code>. ${esc(r.explanation)}</div>`;
     await refresh();
   } catch (e) {
-    $("proposeResult").innerHTML = `<div class="explain">${e.message}</div>`;
+    $("proposeResult").innerHTML = `<div class="explain">${esc(e.message)}</div>`;
   } finally { btn.disabled = false; }
 });
 
 $("seedBtn").addEventListener("click", async () => {
-  try {
-    await callTool("create_mandate", {
-      mandate_id: "m_detergent",
-      goal: "Keep laundry detergent stocked",
-      constraints: { max_price: 15, preferred_brand: "Brand A", fallback_brand: "Brand B" },
-      requires_approval_if: ["price > max_price", "new_brand", "quantity > 2"],
-      authority_type: "explicit",
-      confidence_threshold: 0.85,
-    });
-    toast("Mandate created.");
-    await refresh();
-  } catch (e) { toast(e.message, true); }
+  try { await seedMandate(); } catch (e) { toast(e.message, true); }
 });
 
 /* ---------- the conversation ---------- */
 
 /*
- * Tool names, in the household's language. "Be relatable" is the Alexa design
- * guide's fourth principle — talk with people, not at them — and it applies to
- * the machinery as much as to the sentences. Showing `propose_purchase({...})`
- * would be honest and useless; "checked it against your mandate" is honest and
- * legible, which is what makes the gate visible rather than merely present.
+ * Tool names, in the household's language. Showing `propose_purchase({...})`
+ * would be honest and useless; "checked it against your mandate" is honest
+ * and legible, which is what makes the gate visible rather than merely present.
  */
 const STEP_LABEL = {
   search_catalog: "looked at what's in stock",
@@ -724,28 +1211,28 @@ function renderStep(call) {
 }
 
 function addTurn(said) {
+  $("transcriptEmpty")?.remove();
   const wrap = document.createElement("div");
   wrap.className = "turn";
-  wrap.innerHTML = `<div class="said">${escapeHtml(said)}</div>
-                    <div class="thinking">thinking…</div>`;
+  wrap.innerHTML = `<div class="said">${esc(said)}</div>
+    <div class="thinking"><span class="dots"><span></span><span></span><span></span></span> working — every step goes through Vouch</div>`;
   $("transcript").appendChild(wrap);
   $("transcript").scrollTop = $("transcript").scrollHeight;
   return wrap;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
 let chatBusy = false;
 
 async function say(message) {
   if (chatBusy || !message.trim()) return;
+  // No client-side "is the model ready" gate. The server is the authority on
+  // that and answers 503 with a readable reason, which lands in the
+  // transcript. A gate here once trusted a health check that ran before the
+  // MCP server was up, and refused to send to a perfectly working agent.
+  if (/\bwhy\b/i.test(message)) markWhy();
   chatBusy = true;
   $("chatSend").disabled = true;
   $("chatInput").value = "";
-
   const wrap = addTurn(message);
 
   try {
@@ -755,52 +1242,64 @@ async function say(message) {
       body: JSON.stringify({ message }),
     });
     const body = await res.json();
-
     if (!res.ok) {
       wrap.querySelector(".thinking").outerHTML =
-        `<div class="replied"><span class="badge bad">couldn't answer</span> ${escapeHtml(body.error)}</div>`;
+        `<div class="replied"><span class="badge bad">couldn't answer</span> ${esc(body.error)}</div>`;
     } else {
       const work = body.toolCalls?.length
-        ? `<div class="work">${body.toolCalls.map(renderStep).join("")}</div>`
-        : "";
-      wrap.querySelector(".thinking").outerHTML =
-        `${work}<div class="replied">${escapeHtml(body.text)}</div>`;
+        ? `<div class="work"><span class="who">what it did</span>${body.toolCalls.map(renderStep).join('<span class="arrow">→</span>')}</div>`
+        : `<div class="work"><span class="who">answered without touching the system</span></div>`;
+      wrap.querySelector(".thinking").outerHTML = `${work}<div class="replied">${esc(body.text)}</div>`;
     }
   } catch (e) {
     wrap.querySelector(".thinking").outerHTML =
-      `<div class="replied"><span class="badge bad">couldn't answer</span> ${escapeHtml(e.message)}</div>`;
+      `<div class="replied"><span class="badge bad">couldn't answer</span> ${esc(e.message)}</div>`;
   } finally {
     chatBusy = false;
     $("chatSend").disabled = false;
     $("transcript").scrollTop = $("transcript").scrollHeight;
-    // The conversation changes the record, so the panels below follow it.
-    // Watching the mandate card move while the agent explains why is the
-    // demo's whole payoff — it has to happen in one beat, not on a refresh.
+    // The conversation changes the record, so the panels follow it in the
+    // same beat: watching the mandate move while the agent explains why is
+    // the demo's whole payoff.
     await refresh();
   }
 }
 
 $("chatSend").addEventListener("click", () => say($("chatInput").value));
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") say($("chatInput").value); });
-document.querySelectorAll(".chip-btn").forEach((b) =>
-  b.addEventListener("click", () => say(b.dataset.say)));
+document.querySelectorAll(".chip-btn").forEach((b) => b.addEventListener("click", () => say(b.dataset.say)));
 
 /* ---------- loop ---------- */
 
 async function chatBanner() {
   try {
     const health = await api("/api/health");
+    const chat = health.chat ?? {};
+    chatReady = chat.status === "ready";
+    if (chat.model) {
+      $("modelPill").hidden = false;
+      $("modelPill").textContent = `Agent: ${chat.model}`;
+    }
     const banner = $("chatBanner");
-    if (health.chat?.status === "ready") { banner.hidden = true; return; }
-    // Said plainly rather than hidden: the console is not broken without a
-    // model, and a household should be told which part is unavailable rather
-    // than left typing into a box that silently does nothing.
-    banner.className = health.chat?.status === "failed" ? "banner err" : "banner";
-    banner.textContent = health.chat?.detail ?? "Chat unavailable.";
-    banner.hidden = false;
-    $("chatInput").disabled = true;
-    $("chatSend").disabled = true;
-  } catch { /* the connection dot already reports this */ }
+    if (chatReady) {
+      banner.hidden = true;
+      $("chatInput").disabled = false;
+      $("chatSend").disabled = false;
+    } else {
+      // Said plainly rather than hidden: the console is not broken without a
+      // model, and a household should be told which part is unavailable.
+      banner.className = chat.status === "failed" ? "banner err" : "banner";
+      banner.textContent = chat.detail ?? "Chat unavailable.";
+      banner.hidden = false;
+      $("chatInput").disabled = true;
+      $("chatSend").disabled = true;
+    }
+    renderTour();
+  } catch {
+    // Usually the MCP server is still starting (`npm run dev:all` launches all
+    // three at once). Ask again shortly instead of settling on "no model".
+    setTimeout(chatBanner, 2000);
+  }
 }
 
 async function refresh() {
@@ -809,15 +1308,18 @@ async function refresh() {
     state = { mandates: data.mandates, vouches: data.vouches, catalog: data.catalog };
     $("dot").className = "dot up";
     $("statusText").textContent = "connected";
-    renderCatalog(); renderMandates(); renderSelectors(); renderVouches();
+    renderCatalog(); renderMandates(); renderSelectors(); renderPending(); renderVouches(); renderTour();
   } catch (e) {
     $("dot").className = "dot down";
-    $("statusText").textContent = "disconnected";
-    $("vouches").innerHTML = `<div class="empty">${e.message}</div>`;
+    $("statusText").textContent = "reconnecting…";
+    $("vouches").innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    if (!retrying) { retrying = true; setTimeout(() => { retrying = false; refresh(); }, 2000); }
   }
 }
+let retrying = false;
 
 refresh();
+chatBanner();
 </script>
 </body>
 </html>

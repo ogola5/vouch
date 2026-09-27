@@ -93,6 +93,48 @@ describe("the console page holds together", () => {
     }
   });
 
+  it("walks the demo script's five beats, and the tour never approves on your behalf", () => {
+    const code = withoutComments(scriptBody());
+    const tour = /const BEATS = \[([\s\S]*?)\n\];/.exec(code);
+    assert.ok(tour, "the guided tour should be defined as BEATS");
+    assert.equal((tour[1]!.match(/^\s{2}\{\s*$/gm) ?? []).length, 5, "one beat per step of brief §8's loop");
+    // A tour button that approved a held purchase would make the gate look
+    // decorative on the one screen built to show it is not. Approval stays a
+    // separate, deliberate click by the household.
+    assert.ok(!/approve\(/.test(tour[1]!), "no tour step may approve a held purchase");
+    // Its fallback acts as the agent THROUGH the gate, never around it.
+    assert.match(code, /callTool\("propose_purchase"/);
+    assert.ok(!code.includes("complete_checkout"), "the page must never reach for a direct checkout");
+  });
+
+  it("never renders the model's words or a mandate's text as HTML", () => {
+    // The agent's reply and a household-typed goal both end up in innerHTML.
+    // Unescaped, a reply containing markup would be injected into the page.
+    const code = withoutComments(scriptBody());
+    // Raw interpolation into a template is the risk; `${esc(body.text)}` is fine.
+    for (const source of ["body.text", "body.error", "m.goal", "d.reason", "e.message", "text}"]) {
+      assert.ok(!code.includes("${" + source), `\${${source} is interpolated into markup without esc()`);
+    }
+    assert.match(code, /\$\{esc\(body\.text\)\}/, "the agent's reply should be rendered through esc()");
+  });
+
+  it("says plainly what is simulated, including the doorbell in this console", () => {
+    assert.match(html, /What's real here, and what's simulated/);
+    assert.match(html, /doorbell in this console/i);
+    assert.match(html, /no money moves/i);
+  });
+
+  it("does not decide 'no model' from one health check made while the stack was starting", () => {
+    // Hit for real: `npm run dev:all` starts all three services at once, the
+    // page's only health check ran before the MCP server was up, and the chat
+    // refused to send to a working Bedrock agent for the rest of the session.
+    const code = withoutComments(scriptBody());
+    const say = /async function say\(message\) \{([\s\S]*?)\n\}/.exec(code);
+    assert.ok(say, "say() should exist");
+    assert.ok(!/chatReady/.test(say[1]!), "say() must let the server decide whether a model is available");
+    assert.match(code, /setTimeout\(chatBanner/, "a failed health check should be retried, not believed");
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);

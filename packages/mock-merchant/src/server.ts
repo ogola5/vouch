@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { UCP_HEADERS } from "@vouch/shared";
 import { Merchant, UcpError } from "./merchant.ts";
+import { searchProducts } from "./catalog.ts";
 
 /**
  * HTTP surface for the mock merchant, implementing the UCP REST binding's
@@ -148,14 +149,8 @@ export function createMerchantServer(options: MerchantServerOptions = {}): {
      * ucp.ts rewrite was written to stop repeating.
      */
     if (method === "GET" && path === "/catalog") {
-      const query = url.searchParams.get("q")?.trim().toLowerCase();
-      const products = merchant.catalog.list();
       send(res, 200, {
-        products: query
-          ? products.filter((p) =>
-              `${p.id} ${p.title} ${p.brand}`.toLowerCase().includes(query)
-            )
-          : products,
+        products: searchProducts(merchant.catalog.list(), url.searchParams.get("q") ?? undefined),
       });
       return;
     }

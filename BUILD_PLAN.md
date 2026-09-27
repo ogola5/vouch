@@ -322,6 +322,27 @@
         `PhysicalEvidenceProvider` above. **If the credit request has not been filed yet, file it
         before starting week 2**, because this decision makes it the critical path rather than a
         nice-to-have.
+      - **RESOLVED 2026-09-27: Bedrock access landed; the orchestrator's model is now chosen by
+        which key is in `.env`.** A Bedrock long-term API key (`AWS_BEARER_TOKEN_BEDROCK`) was
+        smoke-tested with one Converse call: HTTP 200 from `us.amazon.nova-2-lite-v1:0` in
+        `us-west-2`. *Reason:* removes the Gemini 5-per-minute ceiling that capped rehearsal (§7),
+        and makes Bedrock a fact for the AWS Builder mini-challenge. *Risk:* Nova 2 Lite's
+        tool-calling is unmeasured, and Flash-Lite showed a model can pass a plain-prompt check and
+        still fail at tool calls. *Mitigation:* `resolveModelConfig` prefers Bedrock when its key is
+        present and falls back to Gemini otherwise, so removing one line from `.env` reverts; the
+        live suite is the acceptance test, not `check:model`. No new dependency — Strands'
+        `BedrockModel` accepts the API key directly and `@aws-sdk/client-bedrock-runtime` is already
+        installed through Strands. Touches `orchestrator` and `web-app` (the chat's configured check).
+      - **Found by the first live console run on Bedrock (2026-09-27): the agent wrote the rule
+        `"quantity > N"` verbatim**, because the `create_mandate` tool description spelled the rule
+        that way. The gate correctly failed closed on it, so *every* purchase was held and the
+        demo's "buys within bounds" beat was unreachable from chat. *Fix:* the description now
+        shows a real number, and `createMandate` rejects any rule outside the gate's vocabulary
+        (`unrecognizedRules` in `packages/shared/src/gate.ts`) with an error listing the valid
+        forms, so the agent corrects itself in the same turn. The gate's own fail-closed handling
+        is unchanged — defence in depth, not a replacement. *Risk:* a mandate with an unknown rule
+        can no longer be created at all; that is the intent, since it could never have bought
+        anything. Touches `shared` and `mcp-server`.
     3. **Week 3 — Ring correlation + adaptive/dispute loop.** Swap in real Ring webhook
       (`RealRingProvider`) once portal access exists; if it's still pending, keep demoing on
       `MockRingProvider` — it's honest and scriptable, not a liability. Wire `record_dispute` to
@@ -335,6 +356,154 @@
     5. **Week 5 — Fire TV dashboard, Bedrock swap-in (if AWS access has landed by then), demo video,
       submission writeup.** The writeup must restate the "real vs. simulated" table in the README —
       keep that table current as each provider gets a real implementation.
+
+## 3b. From here to submission — the plan to win (written 2026-09-27, deadline 2026-10-23)
+
+This supersedes the remaining items of §3 (weeks 3-5) where they conflict. It was written after
+the owner's first full tour of the console on Bedrock, and after the market research in §5c.
+Every item below maps to a judging criterion; anything that maps to none is on the cut list.
+
+### The thesis, in the words the submission will use
+
+> Amazon already buys for you: Auto Buy completes at a target price, and Scheduled Actions
+> restock on a calendar — but they still end at "review and check out", and nothing learns when
+> they get it wrong. AP2 and Mastercard standardized how an agent proves it was *authorized*.
+> **Vouch is the household's side: it lets a home hand over its everyday buying one category at
+> a time, as the agent earns it — and take it back with one sentence.** Their dispute gets your
+> money back. Ours changes what the agent is allowed to do next time.
+
+### Why this wins, criterion by criterion
+
+| Criterion | What a judge must see | Delivered by |
+|---|---|---|
+| **Tech Implementation** | Self-hosted MCP server (the track's named technology), real UCP gate before the order, Strands on Bedrock, the agent acting *unprompted*, cryptographically verifiable approvals | Done + W2, W3, W6 |
+| **Design** | A coherent household experience: the agent asks only when unsure, a dispute is one sentence, approvals need a real credential, a TV-distance household view | Done (console) + W1, W3, W5, W8 |
+| **Potential Impact** | A specific customer and moment ("about to run out"), Amazon's real Auto Buy flow as the baseline, measured evidence (simulation + real people), a realistic adoption path | W2, W4, W7, writeup |
+| **Quality of the Idea** | The one mechanism nobody else describes — authority that adapts — applied to the handover problem Amazon's own restock features stop short of | W2 + the positioning in §5c |
+
+### Work items, in order
+
+Each item follows CLAUDE.md §7: one item at a time, typecheck + tests green, a test that would fail
+without it, the four-heading write-up, then stop. Items touching more than one package carry their
+reason / risk / mitigation here, before code (CLAUDE.md §3).
+
+**W1 — Raw confidence on every Vouch (½ day).** Store the confidence number and the threshold it
+was compared against, so a card reads "0.86 vs your 0.88" instead of the contradictory "confidence
+high / not confident enough" the owner hit. Existing rows stay readable (both fields nullable).
+*Done when:* a held-for-confidence Vouch shows both numbers; a pre-existing Vouch still loads.
+*Reason:* the record is the product and it currently cannot show why. *Risk:* schema change across
+`shared`, `db`, `mcp-server`, console. *Mitigation:* additive nullable fields, no migration of old rows.
+
+**W2 — The household model: autonomous restocking of consumables (3-4 days). The centrepiece.**
+A new `packages/household` that knows what the home uses. Per consumable (detergent, paper goods,
+pet food, coffee, rice, batteries — non-perishables first; fresh food is named as a later stage):
+last purchase (from the Vouch record), pack size, a learned rate of use, and **days left with an
+uncertainty range**. When projected days left fall under delivery time plus a buffer, the agent
+**proposes on its own** — no household message. Also:
+- **Confidence comes from the model, not the agent's opinion:** certainty of the run-out estimate
+  × usual item/brand × price versus history. This **closes the §7 open question** ("the agent
+  grades its own homework"). The gate is untouched — `evaluateProposal` and its "Reviewed and
+  kept" design stay as they are; only the *source* of the number changes.
+- **Two kinds of feedback:** "we're out" / "we still have plenty" adjusts the *rate*; "I didn't
+  want that brand" tightens the *mandate*, as today.
+- **A trust level per category**, visible: always ask → usual item at usual price → may use the
+  fallback brand → may time for deals. Moves with streaks and disputes, never above what the
+  household allows.
+- **Demo control:** "fast-forward N days", so the autonomous proposal happens on camera.
+*Done when:* advancing time past a projected run-out produces a proposal with no chat message, its
+Vouch explains itself from checkable numbers, and "we're out" moves the next projection earlier.
+*Reason:* the handover problem is the customer need Amazon's own features stop short of (§5c), and
+it makes the agent autonomous rather than prompted. *Risk:* a new package plus a scheduler in
+`mcp-server`, and the largest item in the plan. *Mitigation:* the model is pure and synchronous
+(testable like the gate); the scheduler only calls the existing `propose_purchase` path, so the
+gate and its tests are unchanged; if it overruns, ship the model + manual "fast-forward" trigger
+without the per-category trust ladder.
+
+**W3 — Passkey approvals and a tamper-evident record (2-3 days). The spendlatch answer.**
+Household actions (approve, dispute, mandate edit) require a **passkey** (WebAuthn: phone
+fingerprint/face, verified with `node:crypto`, no new dependency; localhost is a secure context so
+it works in the demo). Each approval stores the passkey's signature on the Vouch. Every Vouch
+carries the hash of the previous one, so editing any record breaks the chain, and the console
+shows "record verified". *Done when:* an approval without a valid passkey signature is refused by
+the server (test), and altering a stored Vouch makes verification fail (test).
+*Reason:* the household surface has no authentication today, and the competing entry in our own
+track is ahead exactly there (§5c). *Risk:* WebAuthn is fiddly; touches `mcp-server`, `db`,
+console. *Mitigation:* request the SPKI public key via `getPublicKey()` to avoid a CBOR decoder;
+fallback is an HMAC session-bound approval (spendlatch parity) if passkeys overrun a day.
+
+**W4 — "Plain Auto Buy vs Vouch" side-by-side replay (1 day).** Run the same month of household
+events through a price-trigger-only policy (Auto Buy as Amazon documents it) and through Vouch,
+and show the difference: purchases plain auto-buy would have made that Vouch held or timed
+differently. *Done when:* the panel renders from a real replay, not hard-coded numbers.
+*Reason:* answers "why aren't Amazon's existing controls enough?" with data, not argument.
+
+**W5 — Demo completeness (1½ days):**
+- **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
+  visibly tightens; the tour uses it.
+- **Study mode:** the tour plus three questions (comprehension, trust before/after, "how many
+  prompts would you accept to avoid one unwanted purchase?"), answers saved and exportable.
+- **Ring corroborated control:** a demo control scripts `MockRingProvider` so both correlation
+  states appear on screen, as the brief requires.
+- **`npm run dev:stop`,** and a prompt line "setting a mandate is not a request to buy now" (both
+  in §6).
+
+**W6 — Bedrock explanations (1 day).** `BedrockReasoningProvider.explainVouch` on Nova 2 Lite, with
+the rule-based text as fallback. Threshold *adjustment* stays deterministic and simulation-tuned
+(`packages/eval`), and the writeup says why: the number that moves authority should be
+reproducible. *Done when:* live test shows a model-written explanation naming the record's actual
+rules and numbers; unit test shows the fallback when the model fails.
+
+**W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
+mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
+flow once with a stopwatch, as the first-hand baseline for "one sentence instead".
+
+**W8 — Household view at TV distance (1 day).** A 10-foot layout of completed / waiting / disputed
+and each category's trust level, keyboard/D-pad navigable. **Labelled honestly as a TV-layout web
+view, not a native Fire TV app** (owner may overrule: a native app costs ~2-3 days taken from here).
+
+**Freeze: 2026-10-13.** After this date, only fixes.
+
+**W9 — Verify every [reported] fact in §5c in a browser (½ day)** — Auto Buy's 24h cancel, the
+$12B figure — and update the README's real/simulated table.
+
+**W10 — Video, writeup, developer feedback (2026-10-14 → 10-22).** The 3-minute video follows the
+demo script below. The writeup leads with the thesis above, cites AP2/Mastercard as the foundation,
+publishes the simulation's trade-off curve and the gate-discipline measurement, and states every
+limit. Developer feedback: the Alexa+ add-on access wall (§7). **Submit 2026-10-22**, a day early.
+
+### Calendar
+
+| Dates | Work |
+|---|---|
+| Sep 28 | W1 |
+| Sep 29 – Oct 2 | W2 |
+| Oct 3 – 5 | W3 |
+| Oct 6 | W4 |
+| Oct 7 – 8 | W5 (study mode first, so W7 can start) |
+| Oct 8 – 13 | W7 (owner, in parallel) |
+| Oct 9 | W6 |
+| Oct 10 | W8 |
+| Oct 11 – 13 | W9, buffer, fixes — **freeze Oct 13** |
+| Oct 14 – 18 | Video |
+| Oct 19 – 22 | Writeup, feedback, submit |
+
+### Demo script v2 (3 minutes, no narration needed)
+
+1. **The household:** the TV view shows detergent at 3 days left, paper towels at 11.
+2. **It acts on its own:** fast-forward → the agent proposes detergent, unprompted → bought; the
+   Vouch reads "you run out every ~28 days, last bought 26 days ago, $12.49 is under your usual".
+3. **It stops:** a $27.80 new brand → held; the checkout parked one call short of an order.
+4. **Only you can say yes:** approval asks for a passkey; the agent has no tool for it.
+5. **"Why?"** answered from the record, in plain words (Bedrock).
+6. **"I didn't want that"** — spoken — the category's trust drops; the next borderline call is held.
+7. **Plain Auto Buy vs Vouch:** the same month, side by side.
+8. **Close:** the doorstep correlated (corroborated / unconfirmed), and the record verified.
+
+### Cut, deliberately (say so in the writeup where relevant)
+
+- AP2-format export of mandates (verify AP2's schema first; post-hackathon).
+- The Alexa Skill bridge on AgentCore (§5b) — only if W1-W6 finish early.
+- Native Fire TV app (see W8). Household multi-member identity (§2 scope cut). Fresh food.
 
     ## 4. Guardrails carried forward from the brief (section 9) — don't relitigate these
 
@@ -433,6 +602,59 @@ day, and this bridge — which converts "we simulated Alexa+ in a browser" into 
 driven by a Strands agent on Bedrock AgentCore". Everything else on the list is worth less than
 getting that credit filed and landed.
 
+## 5c. The market as it actually is (researched 2026-09-27)
+
+Source strength is marked on every line because this feeds the writeup: **[primary]** = the
+company's own page, read that day; **[reported]** = press/blogs, confirm in a browser before
+stating as fact (Amazon's help page and Mastercard's page refused automated reads).
+
+**Amazon today — autonomous buying is live, not coming.**
+- Rufus gained auto-buy in Nov 2025 [reported]. Q1 2026 call: "Rufus can research products, track
+  prices, and auto-buy products in our store when they reach a set price"; MAU up 115%,
+  engagement up ~400% YoY [primary, aboutamazon.com]. ~$12B incremental annualized sales, 300M+
+  customers [reported, Yahoo Finance / Modern Retail — confirm].
+- Alexa+ open to everyone in the US 2026-02-04; free with Prime, $19.99/mo otherwise; free chat
+  tier on Alexa.com [primary + TechCrunch].
+- **Alexa for Shopping, 2026-05-13:** Rufus and Alexa+ merged into the Amazon search bar; auto-buy
+  at a target price, price alerts, Scheduled Actions, carts; app, web, Echo Show [primary].
+- **Auto Buy:** "complete your purchase using your default payment method" at the target price
+  [primary]. No confirmation step; notified after; cancel within 24h in Your Orders; Prime only;
+  up to 200 active requests [reported, citing Amazon's help page — confirm].
+- **Scheduled Actions stop at the cart:** "will either notify you or add relevant items directly
+  to your cart… so all you have to do is review and check out" [primary]. Triggers are calendar
+  or price rules ("…if I haven't purchased it in the last 2 months") [primary] — not consumption.
+- **Dash Replenishment** still exists: connected devices (printers, washers, dishwashers) reorder
+  their own consumables [primary, developer.amazon.com]. Only for things a device can sense.
+- Buy for Me (beta since Apr 2025): Amazon's agent checks out on other brands' sites [primary].
+
+**Everyone else — mandates, caps and audit trails are industry standard, not ours.**
+- **Google AP2** (2025-09-16, 60+ partners incl. Mastercard, PayPal, Amex, Coinbase): signed
+  **Intent Mandate** ("price limits, timing, and other conditions") and **Cart Mandate**; a
+  "non-repudiable audit trail". The announcement describes **no** mechanism that changes an
+  agent's authority from outcomes, and **no** consumer-facing record [primary].
+- **Mastercard Verifiable Intent** (2026, with Google): tamper-resistant record of identity,
+  instruction and outcome; new dispute grounds incl. "unauthorized agent action within an
+  authorized mandate". Its dispute is a *payment* dispute [reported].
+- **Visa Intelligent Commerce / Mastercard Agent Pay:** agent-scoped tokens with spend caps,
+  merchant limits, expiry [reported].
+- **OpenAI + Stripe ACP / Instant Checkout** (live Feb 2026): merchant-facing checkout protocol
+  [reported].
+- **spendlatch — same hackathon, same Alexa+ track** [primary, its GitHub]: self-hosted MCP
+  server, simulated Alexa+, HMAC-signed single-use mandates bound to an authenticated session,
+  MCP Apps approval card in chat, every refusal logged. Domain is team cloud/SaaS spend, not
+  households. No adaptive authority, no Ring, single-user. **Ahead of us on authentication:** our
+  household surface has none.
+
+**Positioning corrections that follow — binding on the writeup and demo:**
+- Never present mandates, spending gates or audit trails as ours. Say: *"AP2 and Mastercard
+  standardized how an agent proves it was authorized. Vouch is the household's side — what the
+  agent may do, why it did it, and how that changes when it gets it wrong."*
+- Lead with the one thing none of the above describe: **"Their dispute gets your money back.
+  Ours changes what the agent is allowed to do next time."**
+- Aim the problem statement at Amazon's real flow: Auto Buy notifies after the fact, offers a
+  24h cancel [reported], and nothing public says it learns; Scheduled Actions still end at
+  "review and check out" [primary].
+
 ## 6. Noticed, not scoped
 
     Real improvements spotted while working, deliberately not built. Per `CLAUDE.md` §1, anything
@@ -453,8 +675,27 @@ getting that credit filed and landed.
     - Declaration files emit `.ts` relative specifiers under `rewriteRelativeImportExtensions` while
       the JavaScript correctly emits `.js`. TypeScript resolves this fine and typecheck passes, so it
       costs nothing today; it would matter only if a non-TypeScript consumer ever read `dist/`.
-    - **An approved purchase and a purchase allowed by a raised limit look identical in the
-      console (noticed 2026-09-19).** Both show `Complete` with the original triggered rule still
+    - **The agent buys immediately after creating a mandate, unasked (noticed 2026-09-27, live on
+      Nova 2 Lite).** "Keep detergent stocked" produced `create_mandate → search_catalog →
+      propose_purchase` in one turn. Inside the gate, so harmless, but it merges demo steps 1 and 2.
+      A prompt line ("setting a mandate is not a request to buy now") would likely fix it.
+    - **A Vouch can read "confidence high" and "agent not confident enough" at once (noticed
+      2026-09-27, owner's first full tour).** The record stores only the band (`high` is ≥ 0.85),
+      not the number, so the replayed 0.86 purchase held against a 0.88 threshold is labelled
+      high. The gate compared the right numbers; the record just cannot show them. Fix: store the
+      raw confidence and the threshold it was compared against on the Vouch — a schema change
+      across `shared`, `db` and the console, so it wants its own step.
+    - **`npm run dev:all` leaves orphans behind on Ctrl+C (hit again 2026-09-27).** It backgrounds
+      three `node --watch` processes with `&`; an orphaned mock-merchant kept port 4010 while
+      serving a half-reloaded file, so every catalog search errored. Same class as the stale
+      `mcp-server` in §7. Workaround: `fuser -k 4010/tcp 4020/tcp 4021/tcp 4030/tcp`. A real fix
+      is a `dev:stop` script or a supervisor that owns its children.
+    - **The console's doorbell is never scripted, so every order reads `unconfirmed` (noticed
+      2026-09-27).** Honest, and the page says so, but the demo script wants one `corroborated`
+      Vouch on screen. Needs a demo-control route onto `MockRingProvider.scriptOutcome`.
+    - **~~An approved purchase and a purchase allowed by a raised limit look identical in the
+      console~~ — DONE 2026-09-27 in the console redesign: "Bought · you approved" badge, and the
+      evidence chain reads "held → you said yes". (noticed 2026-09-19).** Both show `Complete` with the original triggered rule still
       attached. The Vouch *data* distinguishes them — `approved_by_household` is in
       `decision.reason` — but the UI does not surface it. Worth closing, because "the record is
       unambiguous" is the product's central claim and this is the one place it currently is not.
@@ -660,10 +901,34 @@ getting that credit filed and landed.
   unprompted and returns the real ids — "Product ID: `detergent-brand-a`" — instead of inventing
   `brand-a-detergent`. Confirmed by observing the tool call, not the reply text.
 
-  **(b) STILL UNVERIFIED.** The run that would have answered it was lost to the 5-per-minute
-  limit above. Since (a) was the suspected cause of (b), the honest position is that (b) may
-  already be fixed and simply has not been measured. Do not build a structural fix for it until
-  one clean run has been observed.
+  **(b) OBSERVED, INTERMITTENT, on Bedrock Nova 2 Lite (2026-09-27).** With `search_catalog`
+  working, asked for Brand C the agent called `list_mandates → search_catalog`, then refused in
+  chat ("Brand C is a new brand, which requires approval… would you like me to propose this?")
+  with **no `propose_purchase` and so no Vouch**. In two scripted runs the same day it did propose
+  and the gate held it; in the owner's hand run it did not. So (a) was not the whole cause, and
+  the clean run this entry was waiting for now exists. A fix is a decision for the owner, not
+  yet built — see the options further down this entry. Same run, a second prompt miss: once the
+  gate held Brand C, the agent asked "Would you like me to complete this purchase despite the
+  mandate rules?" — offering a power it structurally does not have (no approval tool). Harmless
+  because the tool is missing, which is exactly why the tool is missing; but it misleads the
+  household about where approval lives, and a "yes" in chat would invite a re-propose.
+
+  **(b) FIXED IN THE PROMPT AND MEASURED (2026-09-27).** `packages/orchestrator/test/
+  gate-discipline.test.ts` replays the owner's exact two messages (restock Brand A, then ask for
+  Brand C) on a fresh agent and database per trial, and counts. Nova 2 Lite, 8 trials per run:
+
+  | Prompt | Gated | Self-refused | Offered a power it lacks | Re-proposed |
+  |---|---|---|---|---|
+  | Before (baseline) | 5/8 | 3/8 | 3/8 | 0/8 |
+  | "Reading the mandate is not the check" + "never offer to" | 8/8 | 0/8 | 1/8 | 0/8 |
+  | + closing rule: "never end with a question offering to proceed" | 8/8, 8/8 | 0/16 | 0/16 | 0/16 |
+
+  Every baseline self-refusal followed reading the mandate, which is why the fix names that
+  exactly. The test allows at most one self-refusal per run (the model is stochastic; demanding
+  perfection would measure luck) and zero offers or re-proposals. **Limits of the claim:** 16
+  trials on one sentence and one model; a prompt is a request, so the structural guarantee is
+  still the missing approval tool, not this. Re-run it (`VOUCH_TRIALS=8 npm run test:live`)
+  whenever the prompt or the model changes.
 
   **(a) There is no catalog tool.** Asked to restock Brand A, the model invented the product id
   `brand-a-detergent`; the real id is `detergent-brand-a`, and `propose_purchase` failed. Nothing

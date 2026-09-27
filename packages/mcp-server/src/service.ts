@@ -3,6 +3,7 @@ import {
   evaluateProposal,
   newMandate,
   toMajorUnits,
+  unrecognizedRules,
   type AuthorityType,
   type ConfidenceLevel,
   type Mandate,
@@ -130,6 +131,13 @@ export class VouchService {
    * ------------------------------------------------------------------ */
 
   createMandate(input: CreateMandateInput): Mandate {
+    const unknown = unrecognizedRules(input.requires_approval_if);
+    if (unknown.length > 0) {
+      throw new Error(
+        `The gate cannot read ${unknown.map((r) => `"${r}"`).join(", ")}. ` +
+          `Use only "price > max_price", "new_brand", or "quantity > " followed by a whole number, e.g. "quantity > 2".`
+      );
+    }
     const mandate = newMandate({
       mandate_id: input.mandate_id ?? `mandate_${randomUUID()}`,
       goal: input.goal,

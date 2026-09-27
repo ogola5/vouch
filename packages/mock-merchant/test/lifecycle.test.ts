@@ -3,7 +3,28 @@ import { after, describe, it } from "node:test";
 
 import { UCP_HEADERS, ucpAgentHeader, toMinorUnits } from "@vouch/shared";
 import type { UcpProfile } from "@vouch/shared";
-import { Merchant, UcpError, startMerchantServer } from "@vouch/mock-merchant";
+import { Catalog, Merchant, UcpError, searchProducts, startMerchantServer } from "@vouch/mock-merchant";
+
+describe("catalog search matches word by word", () => {
+  const ids = (q: string) => searchProducts(new Catalog().list(), q).map((p) => p.id);
+
+  it("finds Brand A from the words a live agent actually used", () => {
+    // Nova searched "Brand A detergent"; the title is "Brand A Laundry
+    // Detergent", so the old whole-phrase match returned nothing and the
+    // agent told the household the product did not exist.
+    assert.deepEqual(ids("Brand A detergent"), ["detergent-brand-a"]);
+  });
+
+  it("does not let a one-letter word match inside another word", () => {
+    // "a" is inside "laundry"; only a word STARTING with it counts.
+    assert.deepEqual(ids("brand a"), ["detergent-brand-a"]);
+  });
+
+  it("returns everything for an empty query, and nothing for a word no product has", () => {
+    assert.equal(ids("").length, 3);
+    assert.deepEqual(ids("shampoo"), []);
+  });
+});
 
 /**
  * The merchant's job in this project is to be a faithful UCP artifact, so

@@ -110,6 +110,32 @@ function detergentMandate(service: VouchService, confidenceThreshold = 0.85) {
   });
 }
 
+describe("create_mandate refuses a rule the gate cannot read", () => {
+  // Found live on Bedrock: the model copied the tool description's
+  // placeholder "quantity > N" verbatim. The gate failed closed on it, which
+  // was safe — and meant every purchase under that mandate was held forever.
+  it("rejects the placeholder a model actually wrote, and stores nothing", () => {
+    const r = rig();
+    assert.throws(
+      () =>
+        r.service.createMandate({
+          goal: "Keep laundry detergent stocked",
+          constraints: { max_price: 15 },
+          requires_approval_if: ["price > max_price", "quantity > N"],
+          authority_type: "explicit",
+        }),
+      /cannot read "quantity > N".*"quantity > 2"/
+    );
+    assert.equal(r.service.listMandates().length, 0);
+  });
+
+  it("still accepts every rule the gate understands", () => {
+    const r = rig();
+    const m = detergentMandate(r.service);
+    assert.deepEqual(m.requires_approval_if, ["price > max_price", "new_brand", "quantity > 2"]);
+  });
+});
+
 describe("propose_purchase — an out-of-bounds proposal never reaches Complete", () => {
   let r: Rig;
   beforeEach(() => {

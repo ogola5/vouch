@@ -70,6 +70,19 @@ const QUANTITY_RULE = /^quantity\s*>\s*(\d+)$/;
  */
 export const BELOW_CONFIDENCE_THRESHOLD = "below_confidence_threshold";
 
+const KNOWN_RULES = new Set(["price > max_price", "new_brand"]);
+
+/**
+ * The rules in a list that the gate cannot read. Used to refuse such a mandate
+ * at creation time: evaluateProposal still fails closed on them, but a mandate
+ * whose every purchase is held is useless, and saying so while the agent is
+ * still in the turn lets it fix the rule instead of leaving a dead mandate.
+ * First hit live: a model copied the placeholder "quantity > N" verbatim.
+ */
+export function unrecognizedRules(rules: string[]): string[] {
+  return rules.filter((rule) => !KNOWN_RULES.has(rule) && !QUANTITY_RULE.test(rule));
+}
+
 export function evaluateProposal(mandate: Mandate, proposal: PurchaseProposal): MandateEvaluation {
   const triggered: string[] = [];
   const { constraints } = mandate;

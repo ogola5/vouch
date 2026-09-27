@@ -1,5 +1,6 @@
-import { Agent, AfterToolCallEvent, ModelRetryStrategy } from "@strands-agents/sdk";
+import { Agent, AfterToolCallEvent, ModelRetryStrategy, ModelThrottledError } from "@strands-agents/sdk";
 import type { AfterModelCallEvent } from "@strands-agents/sdk";
+import { BedrockModel } from "@strands-agents/sdk/models/bedrock";
 import { GoogleModel } from "@strands-agents/sdk/models/google";
 import { connectVouchToolset, type VouchToolsetOptions } from "./toolset.ts";
 
@@ -34,7 +35,12 @@ export class QuotaAwareRetryStrategy extends ModelRetryStrategy {
 
   protected computeRetryDecision(event: AfterModelCallEvent) {
     const message = event.error instanceof Error ? event.error.message : String(event.error ?? "");
-    const rateLimited = message.includes("429") || message.includes("RESOURCE_EXHAUSTED");
+    // Bedrock's throttling arrives typed; Gemini's only as text. This strategy
+    // replaces Strands' default, so it has to cover both.
+    const rateLimited =
+      event.error instanceof ModelThrottledError ||
+      message.includes("429") ||
+      message.includes("RESOURCE_EXHAUSTED");
 
     if (!rateLimited || event.attemptCount >= this.maxAttempts) {
       return { retry: false as const };
@@ -77,14 +83,15 @@ export const VOUCH_SYSTEM_PROMPT = `You are the shopping agent for a household. 
 HOW YOU BUY THINGS
 - propose_purchase is the only way you may buy anything. There is no other route and you must not look for one.
 - Call search_catalog first to find the product_id. Never invent or construct an id from a product's name — ids do not follow a guessable pattern, and a guessed one just fails.
-- If you cannot act for any reason, including not finding a product, say so plainly. Do not decide on the household's behalf that a purchase is disallowed: propose it and let the mandate check answer. A refusal you make yourself leaves no record the household can look at or question later, which defeats the point of you.
+- When the household asks you to buy something, call propose_purchase for it, even when you can already see it breaks a rule — over the price limit, a brand they have not approved, too many. Do not decide on the household's behalf that a purchase is disallowed, and do not ask "would you like me to propose it?" first: their request is the go-ahead to propose. Reading the mandate with get_mandate or list_mandates is fine, but it is not the check. propose_purchase is the check, and only its answer counts. A refusal you make yourself leaves no record the household can look at or question later, which defeats the point of you.
+- If you cannot act for any other reason, such as not finding the product, say so plainly.
 - Before proposing, you need a mandate. If the household describes a standing instruction ("keep detergent stocked, under $15, monthly"), turn it into one with create_mandate. Prices in a mandate are in dollars: 15 means $15.00.
 - You supply a confidence between 0 and 1 with every proposal: how sure you are that this specific purchase serves the mandate's goal. Be honest. This number is compared against the mandate's threshold, and the household tightens that threshold when you get it wrong. Inflating confidence to get a purchase through is the single worst thing you can do in this role.
 
 WHEN YOU ARE STOPPED
 - A proposal may come back held_for_approval. That is the household's authority working correctly, not an error and not an obstacle.
 - Do NOT retry it. Do not lower the quantity, pick a different product, split the order, or propose again with a higher confidence to get past the threshold. Any of those is an attempt to route around the household's decision.
-- Instead: tell them plainly what stopped it, using the triggered rules in the result. You cannot approve it yourself and you have no tool that would let you — approval is the household's, given on their own screen. Say what it would take, and leave it there.
+- Instead: tell them plainly what stopped it, using the triggered rules in the result. You cannot approve, complete, override or finish it, and you have no tool that would let you — approval is the household's, given with the Approve button on their own screen. So never offer to ("would you like me to complete it anyway?", "shall I proceed?"): that promises a power you do not have. Say that it is waiting for their approval on their screen, and leave it there.
 
 WHAT YOU MAY CLAIM
 - Never say a package was delivered. The doorbell reports motion, not deliveries. "corroborated" means motion at the door inside the window the order was expected in — that is correlation, not proof, and you must describe it that way if asked.
@@ -96,11 +103,13 @@ ANSWERING QUESTIONS
 - "Why did you buy that?" or "Why didn't you buy the expensive one?" -> explain_vouch on that record. Use its answer; do not compose your own explanation of a decision you can look up.
 - "What am I allowing you to do?" -> get_mandate or list_mandates.
 
-Be brief and concrete. The household wants to know what you did and why, not to be reassured.`;
+Be brief and concrete. The household wants to know what you did and why, not to be reassured.
+
+When a purchase is held, end your reply by saying it is waiting for their approval on their screen. Never end it with a question offering to proceed, continue or complete it.`;
 
 export interface VouchAgentOptions extends VouchToolsetOptions {
-  apiKey: string;
-  modelId?: string;
+  /** Which provider and model; see resolveModelConfig. */
+  model: ModelConfig;
   /** Overridable so a test can assert on a narrower prompt. */
   systemPrompt?: string;
   /** Model attempts before a rate-limit error is allowed to surface. */
@@ -147,10 +156,85 @@ export interface AskResult {
  * standalone `npm run check:model` passes on Flash-Lite. Tool-calling is
  * where it falls over, and tool-calling is this component's entire job.
  *
- * This stays a constructor argument: Bedrock replaces it when the AWS credit
- * lands, with no other change.
+ * Used only when no Bedrock key is present; see resolveModelConfig.
  */
 export const DEFAULT_MODEL_ID = "gemini-2.5-flash";
+
+/**
+ * Nova 2 Lite through the US cross-region inference profile — the model the
+ * Alexa bridge in BUILD_PLAN.md §5b names, and the one smoke-tested against
+ * this account on 2026-09-27.
+ */
+export const DEFAULT_BEDROCK_MODEL_ID = "us.amazon.nova-2-lite-v1:0";
+export const DEFAULT_BEDROCK_REGION = "us-west-2";
+
+export type ModelConfig =
+  | { provider: "bedrock"; apiKey: string; modelId: string; region: string }
+  | { provider: "google"; apiKey: string; modelId: string };
+
+/**
+ * Picks the model from whichever key is in the environment. Bedrock wins when
+ * both are set: it carries no 5-per-minute ceiling, and it is the AWS Builder
+ * integration. Deleting its line from .env falls back to Gemini with no code
+ * change, which is the rollback if Nova's tool-calling disappoints.
+ *
+ * Returns null rather than throwing, because "no model" is a normal state for
+ * the console — the gate and the record do not need one.
+ */
+export function resolveModelConfig(env: NodeJS.ProcessEnv = process.env): ModelConfig | null {
+  const bedrockKey = env.AWS_BEARER_TOKEN_BEDROCK?.trim();
+  if (bedrockKey) {
+    return {
+      provider: "bedrock",
+      apiKey: bedrockKey,
+      modelId: env.BEDROCK_MODEL_ID?.trim() || DEFAULT_BEDROCK_MODEL_ID,
+      region: env.AWS_REGION?.trim() || DEFAULT_BEDROCK_REGION,
+    };
+  }
+  const geminiKey = env.GEMINI_API_KEY?.trim();
+  if (geminiKey) {
+    return { provider: "google", apiKey: geminiKey, modelId: env.GEMINI_MODEL_ID?.trim() || DEFAULT_MODEL_ID };
+  }
+  return null;
+}
+
+/**
+ * The Strands model object for a config. Separate so a test can check it
+ * without a network call.
+ *
+ * The Bedrock key goes to the AWS SDK's own bearer auth, NOT Strands'
+ * `apiKey` option. Found on the first live call (2026-09-27): the SDK reads
+ * AWS_BEARER_TOKEN_BEDROCK from the environment by itself and writes
+ * `Authorization`; Strands' `apiKey` middleware then adds a lowercase
+ * `authorization` too, and the request fails with "Header field
+ * authorization must only have a single value". Handing the SDK the token
+ * explicitly means exactly one signer writes exactly one header.
+ */
+export function buildModel(config: ModelConfig): BedrockModel | GoogleModel {
+  if (config.provider === "bedrock") {
+    return new BedrockModel({
+      modelId: config.modelId,
+      region: config.region,
+      clientConfig: {
+        token: { token: config.apiKey },
+        authSchemePreference: ["httpBearerAuth"],
+      },
+    });
+  }
+  return new GoogleModel({ apiKey: config.apiKey, modelId: config.modelId });
+}
+
+/** A config, or an error that says what to put in .env. */
+export function requireModelConfig(env: NodeJS.ProcessEnv = process.env): ModelConfig {
+  const config = resolveModelConfig(env);
+  if (!config) {
+    throw new Error(
+      "No model key is set. Put AWS_BEARER_TOKEN_BEDROCK (or GEMINI_API_KEY) in .env and run with " +
+        "`node --env-file-if-exists=.env`. Never commit it."
+    );
+  }
+  return config;
+}
 
 /**
  * Wires a model to Vouch's MCP tools and returns something you can talk to.
@@ -169,10 +253,7 @@ export async function createVouchAgent(options: VouchAgentOptions): Promise<Vouc
   const tools = await toolset.client.listTools();
 
   const agent = new Agent({
-    model: new GoogleModel({
-      apiKey: options.apiKey,
-      modelId: options.modelId ?? DEFAULT_MODEL_ID,
-    }),
+    model: buildModel(options.model),
     systemPrompt: options.systemPrompt ?? VOUCH_SYSTEM_PROMPT,
     tools,
     // Per the SDK's note, a strategy carries per-budget state and must not be
@@ -203,16 +284,4 @@ export async function createVouchAgent(options: VouchAgentOptions): Promise<Vouc
     },
     disconnect: () => toolset.disconnect(),
   };
-}
-
-/** Reads the key from the environment, with an error that says what to do. */
-export function requireGeminiKey(env: NodeJS.ProcessEnv = process.env): string {
-  const apiKey = env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === "") {
-    throw new Error(
-      "GEMINI_API_KEY is not set. Copy .env.example to .env, add the key, and run with " +
-        "`node --env-file-if-exists=.env`. Never commit it."
-    );
-  }
-  return apiKey;
 }
