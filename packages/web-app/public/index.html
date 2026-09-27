@@ -207,6 +207,16 @@
                 border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
   .record-bad ul { margin: 6px 0 0; padding-left: 18px; }
   .record-ok code, .record-bad code { font-size: 11.5px; }
+  .replay-sum { width: 100%; border-collapse: collapse; font-size: 14px; margin: 6px 0 12px; }
+  .replay-sum th, .replay-sum td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  .replay-sum th:first-child, .replay-sum td:first-child { text-align: left; }
+  .replay-item { display: grid; grid-template-columns: 130px 1fr; gap: 2px 10px; align-items: center; margin: 6px 0; font-size: 13px; }
+  .replay-item .rname { grid-row: span 2; font-weight: 600; }
+  .replay-row { display: grid; grid-template-columns: 70px 1fr; gap: 6px; align-items: center; }
+  .replay-row svg { width: 100%; height: 22px; display: block; background: var(--sunk); border-radius: 4px; }
+  .replay-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .replay-legend i { display: inline-block; width: 12px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  @media (max-width: 560px) { .replay-item { grid-template-columns: 1fr; } .replay-item .rname { grid-row: auto; } }
   .study { margin: 0 0 12px; padding: 14px 16px; border-radius: 12px; border: 1.5px dashed var(--info);
            background: var(--info-bg); font-size: 14px; }
   .study h4 { margin: 0 0 6px; font-size: 15px; }
@@ -529,6 +539,36 @@
       </section>
     </div>
   </div>
+
+  <!-- W4-2: Plain Auto Buy vs Vouch, from a real replay of one simulated household -->
+  <section class="panel" id="replayPanel" aria-labelledby="replayTitle" style="margin-bottom:16px">
+    <div class="panel-head">
+      <h3 id="replayTitle">Why not just Auto Buy?</h3>
+      <span class="meta">a simulated household, not yours — a year, replayed both ways</span>
+    </div>
+    <p class="hint" style="margin-top:0">
+      Auto Buy orders when the price reaches your target. It never sees how much is left. Vouch's
+      household agent orders when the forecast says you're about to run out. Same household, same
+      year, same habits — only the rule for when to buy differs.
+    </p>
+    <div class="actions" style="margin-top:0;align-items:center">
+      <span class="meta" id="replayWho">Household —</span>
+      <button class="small" id="replayAnother">Try another household</button>
+      <label for="replayDeals" class="meta" style="margin:0 0 0 8px">A deal comes along about every</label>
+      <select id="replayDeals" style="width:auto">
+        <option value="7">7 days</option>
+        <option value="14">14 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="60">60 days</option>
+      </select>
+    </div>
+    <div id="replayBody"><div class="empty">loading…</div></div>
+    <div class="fine" style="margin-top:10px">
+      The same code produced the published figures across 200 simulated households
+      (<code>packages/eval/README.md</code>). The deals, the target (15% below usual) and the habits are
+      assumptions, not Amazon data. Auto Buy is modelled generously: re-armed after every purchase.
+    </div>
+  </section>
 
   <!-- DEMO CONTROLS: playing "the world" and acting as the agent by hand -->
   <details class="panel controls" id="controls">
@@ -907,6 +947,91 @@ function renderTour() {
 }
 
 function markWhy() { askedWhy = true; setFlag("vouch.askedWhy"); }
+
+/* ---------- Plain Auto Buy vs Vouch (W4-2) ---------- */
+
+/*
+ * Draws /api/replay: one simulated household's year under Auto Buy and under
+ * the household forecast, computed by packages/eval on request — the same
+ * code as the published figures, never numbers typed into this page.
+ */
+let replayHouseholdNo = Math.floor(Math.random() * 200);
+
+function replayStrip(run, dealDays, daysPerPack, days) {
+  const H = 22;
+  const cap = daysPerPack * 4; // stock above four packs is drawn at the top
+  const y = (s) => H - (Math.min(s, cap) / cap) * (H - 2);
+  const deals = dealDays.map((d) => `<rect x="${d}" y="0" width="1" height="${H}" fill="var(--info-bg)"/>`).join("");
+  const area = `<polygon fill="var(--accent-2)" opacity="0.55" points="0,${H} ${run.stock.map((s, d) => `${d},${y(s).toFixed(1)}`).join(" ")} ${days - 1},${H}"/>`;
+  const outs = run.stock.flatMap((s, d) => (s <= 0 ? [`<rect x="${d}" y="0" width="1" height="${H}" fill="var(--bad)"/>`] : [])).join("");
+  const orders = run.orders.map((o) =>
+    `<rect x="${o.day - 0.5}" y="0" width="1.6" height="${o.by === "agent" ? 6 : H}" fill="${o.by === "agent" ? "var(--ink)" : "var(--warn, #c77d1a)"}"/>`).join("");
+  return `<svg viewBox="0 0 ${days} ${H}" preserveAspectRatio="none" role="img">${deals}${area}${outs}${orders}</svg>`;
+}
+
+function renderReplay(r) {
+  $("replayWho").textContent = `Household #${r.household + 1} of 200`;
+  const total = (policy) => {
+    const ms = r.items.map((i) => i[policy].metrics);
+    const sum = (k) => ms.reduce((a, m) => a + m[k], 0);
+    return {
+      out: sum("stockoutDays"),
+      byHand: sum("boughtByHousehold"),
+      stock: sum("meanStockDays") / ms.length,
+      price: sum("spend") / sum("packsBought"),
+    };
+  };
+  const a = total("autoBuy");
+  const v = total("forecast");
+  const pct = (p) => `${p <= 1 ? "" : "+"}${Math.round((p - 1) * 100)}%`;
+  const better = (x, y) => (x < y ? ` style="font-weight:700"` : "");
+  const row = (label, av, vv, fmt, lowerIsBetter = true) =>
+    `<tr><td>${label}</td><td${lowerIsBetter ? better(av, vv) : ""}>${fmt(av)}</td><td${lowerIsBetter ? better(vv, av) : ""}>${fmt(vv)}</td></tr>`;
+  const int = (n) => Math.round(n).toLocaleString();
+
+  $("replayBody").innerHTML = `
+    <table class="replay-sum">
+      <thead><tr><th>Over the year, all six items</th><th>Auto Buy</th><th>Vouch</th></tr></thead>
+      <tbody>
+        ${row("Days something had run out", a.out, v.out, int)}
+        ${row("Times you had to reorder by hand", a.byHand, v.byHand, int)}
+        ${row("Stock sitting in the house (average days)", a.stock, v.stock, (n) => n.toFixed(0))}
+        ${row("Price paid, compared with usual", a.price, v.price, (p) => (Math.abs(p - 1) < 0.005 ? "usual" : pct(p)))}
+      </tbody>
+    </table>
+    ${r.items.map((i) => `
+      <div class="replay-item">
+        <div class="rname">${esc(i.name)}<div class="meta" style="font-weight:400">a pack lasts ~${Math.round(i.daysPerPack)} days here</div></div>
+        <div class="replay-row"><span class="meta">Auto Buy</span>${replayStrip(i.autoBuy, i.dealDays, i.daysPerPack, r.days)}</div>
+        <div class="replay-row"><span class="meta">Vouch</span>${replayStrip(i.forecast, i.dealDays, i.daysPerPack, r.days)}</div>
+      </div>`).join("")}
+    <div class="replay-legend">
+      <span><i style="background:var(--accent-2)"></i>stock in the house</span>
+      <span><i style="background:var(--bad)"></i>run out</span>
+      <span><i style="background:var(--ink);height:5px"></i>agent ordered</span>
+      <span><i style="background:var(--warn, #c77d1a)"></i>you had to order by hand</span>
+      <span><i style="background:var(--info-bg);border:1px solid var(--line)"></i>deal on</span>
+    </div>
+    <p class="meta" style="margin-top:8px">
+      Bold marks the better number. Auto Buy should pay less: buying only on deals is what it is for.
+      Change how often deals come along — with rare deals a price trigger runs out, with frequent ones it
+      stockpiles. It can't avoid both, because it never sees what's left.
+    </p>`;
+}
+
+async function loadReplay() {
+  try {
+    renderReplay(await api(`/api/replay?household=${replayHouseholdNo}&deals=${$("replayDeals").value}`));
+  } catch (e) {
+    $("replayBody").innerHTML = `<div class="empty">Couldn't run the replay: ${esc(e.message)}</div>`;
+  }
+}
+
+$("replayAnother").addEventListener("click", () => {
+  replayHouseholdNo = (replayHouseholdNo + 1 + Math.floor(Math.random() * 199)) % 200;
+  loadReplay();
+});
+$("replayDeals").addEventListener("change", loadReplay);
 
 /* ---------- study mode (W5c) ---------- */
 
@@ -2207,6 +2332,7 @@ let retrying = false;
 refresh();
 chatBanner();
 loadPasskey();
+loadReplay();
 </script>
 </body>
 </html>

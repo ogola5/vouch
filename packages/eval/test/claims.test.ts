@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 
-import { DEFAULT_TRIAL, lateHarmReduction, restockSummary, runRestockTrial, runTrial } from "@vouch/eval";
+import { DEFAULT_TRIAL, lateHarmReduction, replayHousehold, restockSummary, runRestockTrial, runTrial } from "@vouch/eval";
 import type { AutoBuySweepRow, RestockResult, SweepRow, TrialResult } from "@vouch/eval";
 
 /**
@@ -181,6 +181,29 @@ describe("Auto Buy (W4): the README's comparison is what the simulation produces
     const rerun = runRestockTrial({ ...restock.config, dealsPerDay: 1 / 7 });
     assert.equal(rerun.autoBuy.stockoutDays, often.autoBuy.stockoutDays);
     assert.equal(rerun.autoBuy.meanStockDays, often.autoBuy.meanStockDays);
+  });
+
+  it("the console's replay is the published trial, one household at a time (W4-2)", () => {
+    // Summed over all 200 households, the replays reproduce the published
+    // totals exactly. So what the panel draws is not a separate model, and
+    // collecting the day-by-day log moved nothing.
+    const sums = { autoBuy: { out: 0, packs: 0, byHand: 0 }, forecast: { out: 0, packs: 0, byHand: 0 } };
+    for (let h = 0; h < restock.config.households; h++) {
+      for (const item of replayHousehold(h, 30, restock.config).items) {
+        for (const p of ["autoBuy", "forecast"] as const) {
+          sums[p].out += item[p].metrics.stockoutDays;
+          sums[p].packs += item[p].metrics.packsBought;
+          sums[p].byHand += item[p].metrics.boughtByHousehold;
+          // One logged order per pack after the starting one.
+          assert.equal(item[p].orders.length, item[p].metrics.packsBought - 1);
+        }
+      }
+    }
+    for (const p of ["autoBuy", "forecast"] as const) {
+      assert.equal(sums[p].out, restock[p].stockoutDays, p);
+      assert.equal(sums[p].packs, restock[p].packsBought, p);
+      assert.equal(sums[p].byHand, restock[p].boughtByHousehold, p);
+    }
   });
 
   it("states the assumptions it rests on", () => {

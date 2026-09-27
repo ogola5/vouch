@@ -250,6 +250,21 @@ describe("the console page holds together", () => {
     assert.match(code, /text\/csv/);
   });
 
+  it("draws Auto Buy vs Vouch from the replay, labelled as a simulated household (W4-2)", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /api\(`\/api\/replay\?household=\$\{replayHouseholdNo\}&deals=/);
+    assert.match(html, /a simulated household, not yours/);
+    assert.match(html, /assumptions, not Amazon data/);
+    // Auto Buy's own win is shown, not hidden.
+    assert.match(code, /Price paid, compared with usual/);
+    assert.match(code, /Auto Buy should pay less/);
+    // Every number in the table is computed from the replay's metrics.
+    const render = /function renderReplay\(r\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.ok(!/\b(19,?464|3,?375|10,?028|2,?819)\b/.test(render), "no published figure typed into the panel");
+    assert.match(render, /i\[policy\]\.metrics/);
+    assert.match(render, /esc\(i\.name\)/);
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@vouch/eval": "*",
     "@vouch/orchestrator": "*",
     "@vouch/shared": "*"
   },

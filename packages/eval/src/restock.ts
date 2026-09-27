@@ -181,13 +181,21 @@ interface Accuracy {
   measured: number;
 }
 
+/** What happened, day by day — only collected for a replay, never for the published trial. */
+export interface ReplayLog {
+  /** Days of supply left at the end of each day (0 = out). */
+  stock: number[];
+  orders: { day: number; by: "household" | "agent"; price: number }[];
+}
+
 function runPolicy(
   config: RestockConfig,
   world: World,
   policy: Policy,
   rng: () => number,
   askRng: () => number,
-  accuracy: Accuracy
+  accuracy: Accuracy,
+  log?: ReplayLog
 ) {
   const lead = world.profile.leadDays;
   const metrics = empty();
@@ -204,6 +212,7 @@ function runPolicy(
     metrics.packsBought++;
     metrics.spend += world.price[today]!;
     if (by === "household") metrics.boughtByHousehold++;
+    log?.orders.push({ day: today, by, price: world.price[today]! });
   };
   const onTheWay = (today: number) => [...arrivals.keys()].some((d) => d > today);
 
@@ -212,6 +221,7 @@ function runPolicy(
   events.push({ kind: "purchase", day: 0, packs: 1, by: "household" });
   metrics.packsBought++;
   metrics.spend += world.price[0]!;
+  log?.stock.push(stock);
   let manualReorderOn: number | null = null;
 
   for (let day = 1; day < config.days; day++) {
@@ -267,6 +277,7 @@ function runPolicy(
     }
 
     stockSum += stock;
+    log?.stock.push(stock);
   }
 
   metrics.meanStockDays = stockSum / (config.days - 1);
@@ -348,6 +359,66 @@ export function runAutoBuySweep(config: RestockConfig = DEFAULT_RESTOCK): AutoBu
     const r = runRestockTrial({ ...config, dealsPerDay: 1 / dealEveryDays });
     return { dealEveryDays, autoBuy: pick(r.autoBuy), forecast: pick(r.forecast) };
   });
+}
+
+export interface ReplayItem {
+  item_id: string;
+  name: string;
+  /** Days of supply one pack lasts in this household — for scaling a chart. */
+  daysPerPack: number;
+  /** Days on which a deal was on. */
+  dealDays: number[];
+  autoBuy: ReplayLog & { metrics: PolicyMetrics };
+  forecast: ReplayLog & { metrics: PolicyMetrics };
+}
+
+export interface Replay {
+  household: number;
+  seed: number;
+  days: number;
+  dealEveryDays: number;
+  items: ReplayItem[];
+}
+
+/**
+ * One simulated household, replayed day by day under Auto Buy and under the
+ * household forecast (BUILD_PLAN.md §3b W4-2) — for the console to draw.
+ *
+ * Household `h` gets exactly the world it had in the published trial (same
+ * seeds, same pace, same guests); at the default deal frequency its numbers
+ * are its share of results/restock.json. Nothing here is a real household.
+ */
+export function replayHousehold(
+  household: number,
+  dealEveryDays = 30,
+  config: RestockConfig = DEFAULT_RESTOCK
+): Replay {
+  if (!Number.isInteger(household) || household < 0 || household >= config.households) {
+    throw new Error(`household must be a whole number from 0 to ${config.households - 1}`);
+  }
+  if (![7, 14, 30, 60].includes(dealEveryDays)) throw new Error("dealEveryDays must be 7, 14, 30 or 60");
+  const cfg = { ...config, dealsPerDay: 1 / dealEveryDays };
+  const unused: Accuracy = { absError: 0, inside: 0, measured: 0 };
+
+  const items = DEMO_ITEMS.map((item, i) => {
+    const streamSeed = cfg.seed + household * 101 + i * 7;
+    const world = buildWorld(cfg, item, mulberry32(streamSeed), mulberry32(streamSeed ^ 0x9e3779b9));
+    const run = (policy: Policy) => {
+      const log: ReplayLog = { stock: [], orders: [] };
+      const metrics = runPolicy(cfg, world, policy, mulberry32(streamSeed ^ 0x5bd1e995), mulberry32(streamSeed ^ 0x2545f491), unused, log);
+      return { ...log, stock: log.stock.map((s) => Math.round(s * 10) / 10), metrics };
+    };
+    return {
+      item_id: item.item_id,
+      name: item.name,
+      daysPerPack: Math.round(world.truePace * 10) / 10,
+      dealDays: world.price.flatMap((p, d) => (p < 1 ? [d] : [])),
+      autoBuy: run("autoBuy"),
+      forecast: run("forecast"),
+    };
+  });
+
+  return { household, seed: cfg.seed, days: cfg.days, dealEveryDays, items };
 }
 
 export function runRestockTrial(config: RestockConfig = DEFAULT_RESTOCK): RestockResult {

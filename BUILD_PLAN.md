@@ -603,6 +603,43 @@ The claim for the writeup: *a price trigger either runs out or stockpiles; it ca
 because it never sees what is left.* Every figure is pinned in `packages/eval/test/claims.test.ts`.
 Not yet built: **W4-2**, the console panel.
 
+**W4-2 trade-off (written before code, CLAUDE.md §3; touches `eval` and `web-app`).**
+
+*Reason.* The demo needs the Auto Buy comparison on screen, and "renders from a real replay, not
+hard-coded numbers" means the console has to run the simulation, not print the README. Running one
+synthetic household for a year takes milliseconds, so the page can offer "try another household"
+and "how often are there deals?". Both answer "you picked a flattering example" on the spot.
+
+*Risk.* The web app gains a workspace dependency on `@vouch/eval`; no npm package is added. The
+replay could also be mistaken for the demo household's real data.
+
+*Mitigation.*
+- The route is read-only and pure: `GET /api/replay`, with no store, no household authority and
+  no MCP.
+- It lives in the web app, not the MCP server, so no agent tool or household power is involved.
+- It reuses the same `runPolicy` the published figures come from, extended with an optional event
+  log. A test proves that logging moves no number.
+- The panel says "a simulated household, not yours" in its heading.
+- The window shown starts at day 1, so it includes the forecast's own learning weeks.
+
+**W4-2 DONE 2026-09-28 — W4 COMPLETE.** The console has a "Why not just Auto Buy?" panel.
+- **The data:** `GET /api/replay?household=N&deals=D` runs `replayHousehold` from `packages/eval`,
+  a simulated household's full year under both policies, in 20–50 ms.
+- **The page:** a four-row table for the year, with the better number in bold and Auto Buy's price
+  win shown. Below it, per item, two strips: stock level, days run out, agent orders, orders by
+  hand, and deal days.
+- **Controls:** "Try another household" (a random one of the 200) and "a deal comes along about
+  every 7/14/30/60 days".
+- **Proof it's the published trial:** summed over all 200 households, the replays reproduce the
+  published Auto Buy and forecast totals exactly (test in `claims.test.ts`).
+- **Proof nothing is typed in:** the page test checks that no published figure appears in the
+  panel's code. The panel is labelled "a simulated household, not yours" and "assumptions, not
+  Amazon data".
+- **No duplication:** it reuses `runPolicy` with an optional log, and no new npm package was
+  added (web-app → `@vouch/eval` is a workspace link).
+- **Individual households vary:** household #138 with weekly deals needs fewer reorders by hand
+  under Auto Buy. Shown as it comes out.
+
 **W4b — Proof mode, trace and the security matrix (1½ days). Adopted from an external review
 2026-09-27** (numeric self-scores in that review rejected per CLAUDE.md §10; its "0.85 → 0.92" is
 stale — the step is +0.03; its "trust 92% → 99%" inverted the meaning of the threshold and is not

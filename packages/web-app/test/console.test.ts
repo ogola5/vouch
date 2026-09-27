@@ -83,6 +83,32 @@ async function tool<T>(name: string, args: Record<string, unknown>): Promise<T> 
   return JSON.parse(body.text) as T;
 }
 
+describe("Plain Auto Buy vs Vouch (W4-2)", () => {
+  type Run = { stock: number[]; orders: { day: number; by: string }[]; metrics: { stockoutDays: number } };
+  type Replay = { household: number; days: number; dealEveryDays: number; items: { autoBuy: Run; forecast: Run }[] };
+
+  it("replays a simulated household from the simulation, not from numbers in the page", async () => {
+    const r = await get<Replay>("/api/replay?household=3&deals=30");
+    assert.equal(r.household, 3);
+    assert.equal(r.items.length, 6);
+    for (const item of r.items) {
+      assert.equal(item.autoBuy.stock.length, r.days);
+      assert.equal(item.forecast.stock.length, r.days);
+    }
+    // The deal setting reaches the simulation: fewer deals, fewer Auto Buy orders.
+    const rare = await get<Replay>("/api/replay?household=3&deals=60");
+    const agentOrders = (x: Replay) => x.items.reduce((n, i) => n + i.autoBuy.orders.filter((o) => o.by === "agent").length, 0);
+    assert.ok(agentOrders(rare) < agentOrders(r));
+  });
+
+  it("refuses a household or deal setting outside the published trial", async () => {
+    for (const q of ["household=200", "household=-1", "household=abc", "deals=3"]) {
+      const res = await fetch(`${web.url}/api/replay?${q}`);
+      assert.equal(res.status, 400, q);
+    }
+  });
+});
+
 describe("the console serves a page and reaches the MCP server", () => {
   it("serves the dashboard HTML", async () => {
     const response = await fetch(`${web.url}/`);

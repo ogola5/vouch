@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
+import { replayHousehold } from "@vouch/eval";
 import { MerchantDemoClient, VouchBridge } from "./bridge.ts";
 import { ChatSession } from "./chat.ts";
 
@@ -108,6 +109,23 @@ export function createWebApp(options: WebAppOptions): {
       const body = await readJsonBody(req);
       chat.modelDown = body.down === true;
       sendJson(res, 200, { down: chat.modelDown });
+      return;
+    }
+
+    /*
+     * Plain Auto Buy vs Vouch (W4-2): one SIMULATED household replayed under
+     * both, computed on request from the same code as the published figures.
+     * Pure and read-only — no store, no MCP, no household authority — which
+     * is why it lives here rather than on either Vouch surface.
+     */
+    if (method === "GET" && path === "/api/replay") {
+      const household = Number(url.searchParams.get("household") ?? 0);
+      const deals = Number(url.searchParams.get("deals") ?? 30);
+      try {
+        sendJson(res, 200, replayHousehold(household, deals));
+      } catch (error) {
+        sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 
