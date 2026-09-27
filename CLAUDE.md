@@ -39,6 +39,10 @@ npm run typecheck   # tsc -b across the package graph, then the test sources
 npm test            # tsc -b, then node --test
 npm run dev:mock-merchant   # UCP merchant on :4010
 npm run dev:mcp-server      # Vouch MCP server on :4020/mcp
+npm run dev:all             # all three; console at http://localhost:4030 (localhost, not 127.0.0.1 — passkeys)
+npm run dev:stop            # frees 4010/4020/4021/4030 — Ctrl+C on dev:all can leave orphans behind
+npm run dev:fresh           # dev:stop, delete the database, dev:all — a clean demo
+npm run test:live           # the model-backed tests (reads .env); npm test skips them
 ```
 
 ## Three Node 24 constraints that are not negotiable

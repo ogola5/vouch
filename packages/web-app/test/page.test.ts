@@ -93,11 +93,14 @@ describe("the console page holds together", () => {
     }
   });
 
-  it("walks the demo script's five beats, and the tour never approves on your behalf", () => {
+  it("walks demo script v2's seven beats, household first, and the tour never approves on your behalf", () => {
     const code = withoutComments(scriptBody());
     const tour = /const BEATS = \[([\s\S]*?)\n\];/.exec(code);
     assert.ok(tour, "the guided tour should be defined as BEATS");
-    assert.equal((tour[1]!.match(/^\s{2}\{\s*$/gm) ?? []).length, 5, "one beat per step of brief §8's loop");
+    assert.equal((tour[1]!.match(/^\s{2}\{\s*$/gm) ?? []).length, 7, "one beat per step of demo script v2 (BUILD_PLAN.md §3b)");
+    const titles = [...tour[1]!.matchAll(/title: "([^"]+)"/g)].map((m) => m[1]);
+    assert.equal(titles[0], "Meet your household", "the household comes first");
+    assert.ok(titles.includes("Only you can say yes") && titles.includes("Check the record"));
     // A tour button that approved a held purchase would make the gate look
     // decorative on the one screen built to show it is not. Approval stays a
     // separate, deliberate click by the household.

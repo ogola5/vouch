@@ -648,6 +648,15 @@ prompt line: setting a standing instruction is not a request to buy now. `create
 succeeds first time; a trial went from ~44s to ~17s. Full live suite 30/30. Limits: 5 trials per
 behaviour, one phrasing each, one model.
 
+**W5b DONE 2026-09-28 — the tour is demo script v2.** Seven steps, household first: meet your
+household → it buys on its own (doorbell corroborated) → it asks before buying (Order the coffee) →
+it stops at your limit (+ ask why) → only you can say yes (points to Approve/passkey or Keep blocked;
+the tour never approves) → say you didn't want it (chat dispute; detergent drops to Ask) → check the
+record (simulate an edit, watch it caught). Each "why this is different" line uses only §5c claims.
+Every step works without a model through the same gate. Verified by walking all seven through the
+real stack via HTTP, checking each step's own done condition: 7/7. `npm run dev:stop` and
+`npm run dev:fresh` added (CLAUDE.md commands updated). Remaining in W5: **W5c** study mode.
+
 **W5 — Demo completeness (1½ days):**
 - **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
   visibly tightens; the tour uses it.
@@ -897,7 +906,8 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
       high. The gate compared the right numbers; the record just cannot show them. Fix: store the
       raw confidence and the threshold it was compared against on the Vouch — a schema change
       across `shared`, `db` and the console, so it wants its own step.
-    - **`npm run dev:all` leaves orphans behind on Ctrl+C (hit again 2026-09-27).** It backgrounds
+    - **~~`npm run dev:all` leaves orphans behind on Ctrl+C~~ — `npm run dev:stop` / `dev:fresh`
+      added in §3b W5b. (hit again 2026-09-27).** It backgrounds
       three `node --watch` processes with `&`; an orphaned mock-merchant kept port 4010 while
       serving a half-reloaded file, so every catalog search errored. Same class as the stale
       `mcp-server` in §7. Workaround: `fuser -k 4010/tcp 4020/tcp 4021/tcp 4030/tcp`. A real fix

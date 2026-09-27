@@ -13,6 +13,8 @@
     "dev:mock-merchant": "npm run dev --workspace packages/mock-merchant",
     "dev:web-app": "npm run dev --workspace packages/web-app",
     "dev:all": "npm run dev:mock-merchant & npm run dev:mcp-server & npm run dev:web-app",
+    "dev:stop": "fuser -k 4010/tcp 4020/tcp 4021/tcp 4030/tcp >/dev/null 2>&1; echo 'Vouch: ports 4010 4020 4021 4030 are free.'",
+    "dev:fresh": "npm run dev:stop && rm -f packages/mcp-server/vouch.db packages/mcp-server/vouch.db-wal packages/mcp-server/vouch.db-shm && npm run dev:all",
     "check:model": "node --env-file-if-exists=.env packages/orchestrator/src/checkModel.ts",
     "eval": "node packages/eval/src/main.ts",
     "ring:capture": "node --env-file-if-exists=.env packages/ring-integration/scripts/capture.ts",

@@ -95,7 +95,7 @@
   .progress { flex: 1; min-width: 120px; max-width: 260px; height: 6px; background: var(--sunk);
               border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
   .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .5s ease; }
-  .beats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .beats { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
   .beat-tab { text-align: left; border: 1px solid var(--line); background: var(--sunk); border-radius: 11px;
               padding: 10px 11px; cursor: pointer; color: var(--ink); font: inherit; display: flex; gap: 9px;
               align-items: flex-start; transition: border-color .15s, background .15s; }
@@ -337,7 +337,7 @@
     .honesty { grid-template-columns: 1fr; }
   }
   @media (max-width: 720px) {
-    .beats { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+    .beats { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
     .beat-tab { justify-content: center; padding: 8px 4px; }
     .beat-tab .beat-text { display: none; }
     .chain { grid-template-columns: 1fr 1fr; }
@@ -381,7 +381,7 @@
     <div class="tour-head">
       <div>
         <div class="eyebrow">Try it yourself</div>
-        <h3 id="tourTitle">The whole idea in five steps</h3>
+        <h3 id="tourTitle">The whole idea in seven steps</h3>
       </div>
       <div class="progress" aria-hidden="true"><div id="tourBar"></div></div>
       <span class="meta" id="tourProgress">0 of 5</span>
@@ -670,100 +670,172 @@ function firstActiveMandate() {
   return state.mandates.find((m) => m.status !== "paused") ?? state.mandates[0];
 }
 
+/*
+ * The tour follows demo script v2 (BUILD_PLAN.md §3b): the household first,
+ * then each beat of the loop. Every "why this is different" line uses only
+ * claims recorded in §5c. The tour NEVER approves on the household's behalf:
+ * step 5 takes you to the Approve button, where your passkey decides.
+ */
+const startedBy = (v, who) => v.trace?.started_by === who;
+const detergentBought = () =>
+  state.vouches.find((v) => v.authority.mandate_id === "m_detergent" && v.action.status === "Complete" && !v.dispute);
+const requireHousehold = () => {
+  if (!hh.set_up) throw new Error("Do step 1 first — load the demo household.");
+};
+let recordSeen = readFlag("vouch.recordSeen");
+
 const BEATS = [
   {
-    title: "Give it a rule",
-    sub: "a mandate",
-    done: () => state.mandates.length > 0,
-    heading: "Tell it what it may do, in plain words.",
-    body: "You say “keep detergent stocked, under $15”. The agent writes that down as a mandate — a structured limit the server checks before any order, not a setting buried in an app.",
+    title: "Meet your household",
+    sub: "what it may do",
+    done: () => hh.set_up,
+    heading: "Six everyday things, each handed over as far as you choose.",
+    body: "Detergent is on <b>Auto</b>: it buys within your limits and tells you after. Coffee is on <b>Ask</b>: it suggests, you say yes. Dish soap is on <b>Remind</b>: it only tells you. Toilet paper is on Auto until a date, with weekend deliveries only.",
     watch: [
-      "the chat shows “wrote down your instruction”",
-      "a mandate appears on the right with its limits and a confidence bar",
+      "each card says how many days are left, gently — and what the agent may do about it",
+      "the forecast learns from what your home actually used, not a calendar",
     ],
-    diff: "Payment-side controls such as Know-Your-Agent verify <em>which</em> agent is acting. A mandate says <em>what this household allows</em>, in the household's words, and the server enforces it.",
-    actions: [
-      { label: "Say it to the agent", primary: true, chat: true,
-        run: () => say("Keep laundry detergent stocked for me. Stay under $15 a bottle, I prefer Brand A, Brand B is fine as a fallback. Check monthly.") },
-      { label: "Or create it without the model", run: seedMandate },
-    ],
+    diff: "Amazon's Scheduled Actions restock on a calendar and still end at “review and check out”; Dash Replenishment only knows what a device can sense. This forecasts what <em>your</em> home uses, and lets you hand over as much — or as little — as you choose, one item at a time.",
+    actions: [{ label: "Load the demo household", primary: true, run: () => $("hhSetup").click() }],
   },
   {
-    title: "It buys, within bounds",
-    sub: "a real checkout",
-    done: () => state.vouches.some((v) => v.action.status === "Complete"),
-    heading: "A price drops and it restocks, on its own.",
-    body: "Brand A drops to $12.49. The agent looks up the real product, then proposes the purchase. The server opens a real UCP checkout session, checks it against your mandate, and completes the order because it is inside your limits.",
+    title: "It buys on its own",
+    sub: "nobody asked",
+    done: () => state.vouches.some((v) => startedBy(v, "household_agent") && v.action.status === "Complete"),
+    heading: "Move the clock forward — detergent is about to run out, and it restocks by itself.",
+    body: "Nobody types anything. The household agent sees detergent running low, proposes your usual Brand A through the <b>same gate</b> a chat request goes through, and the checkout completes because it is inside your limits.",
     watch: [
-      "the steps “looked at what's in stock → checked it against your mandate”",
-      "a green <b>Bought</b> Vouch, with a chain: mandate passed → session completed → order id → doorstep",
+      "in the record: <b>“Nobody asked — your household agent did this on its own”</b>, with the numbers it acted on",
+      "open <b>How it decided</b>: every check it passed, and each checkout step with its request id",
+      "the doorstep: <b>corroborated</b> — motion at the door inside the delivery window. Correlation, never proof.",
     ],
-    diff: "Protocol-level receipts already exist (ACP shipped them first). What's new is who reads this one: <em>you</em>, in plain language, next to the rule that allowed it.",
+    diff: "Auto Buy already buys at a target price. What's new is <em>why</em> this bought — your home running low — and a record that says “nobody asked”, shows every check, and ties the doorstep to it honestly.",
     actions: [
-      { label: "Drop Brand A to $12.49 and ask it to restock", primary: true, chat: true,
-        run: async () => { await setPrice("detergent-brand-a", 12.49);
-          await agentOr("Brand A detergent just dropped to $12.49. Please restock one bottle.",
-            { product: "detergent-brand-a", brand: "Brand A", confidence: 0.93, reason: ["price_drop", "preferred_brand"] }); } },
-    ],
-  },
-  {
-    title: "It gets stopped",
-    sub: "the gate holds",
-    done: () => state.vouches.some((v) => v.action.status === "PendingApproval"),
-    heading: "Ask for something outside the rule, and watch it stop.",
-    body: "Brand C costs $27.80, over your $15 limit and a brand you never approved. The agent is told to <em>propose</em> it anyway rather than refuse on its own, so the refusal becomes a recorded act of the gate, not an opinion in a chat.",
-    watch: [
-      "the amber step “checked it against your mandate”",
-      "an amber <b>Held</b> Vouch naming the exact rules that stopped it",
-      "the session is <b>parked at ready_for_complete</b>: a real checkout, one call short of an order, with no order id",
-      "a “Needs your OK” box — only you can approve it; the agent has no tool that can",
-    ],
-    diff: "The gate runs on the checkout's own <code>ready_for_complete → completed</code> step, so a stopped purchase leaves real evidence behind. A refusal that happened before any checkout would prove nothing about whether the check works.",
-    actions: [
-      { label: "Ask for the $27.80 Brand C", primary: true, chat: true,
-        run: () => agentOr("Buy the Brand C detergent, the 96-load one. I want the biggest bottle.",
-          { product: "detergent-brand-c", brand: "Brand C", confidence: 0.9, reason: ["larger_size"] }) },
-    ],
-  },
-  {
-    title: "Ask why",
-    sub: "answered from the record",
-    done: () => askedWhy,
-    heading: "Question it, and get the actual reason.",
-    body: "Ask “why didn't you buy it?”. The agent reads the Vouch and explains the boundary that stopped it, instead of making up a story after the fact. You can also press <b>Why?</b> on any Vouch.",
-    watch: [
-      "the step “looked up why” or “read back your history” — the answer comes from the record",
-      "it names the real rules: over your limit, unapproved brand",
-    ],
-    diff: "Most agents explain themselves from memory, which is a second guess. This explanation is looked up from the same record the gate wrote.",
-    actions: [
-      { label: "Ask why it didn't buy Brand C", primary: true, chat: true,
-        run: () => { markWhy(); return say("Why didn't you buy the Brand C one?"); } },
-      { label: "Or press Why? on the held Vouch", run: () => {
-          const held = state.vouches.find((v) => v.action.status === "PendingApproval");
-          if (!held) { toast("Do step 3 first — there's nothing held yet.", true); return; }
-          document.getElementById(`vouch-${held.vouch_id}`)?.scrollIntoView({ block: "center" });
-          explain(held.vouch_id);
+      { label: "Let the doorbell see it, then +1 day", primary: true, run: async () => {
+          requireHousehold();
+          await household("demo/doorbell", { method: "POST", body: JSON.stringify({ outcome: "corroborated" }) });
+          await advanceDays(1);
         } },
     ],
   },
   {
-    title: "Dispute it, and it tightens",
-    sub: "the adaptive loop",
-    done: () => state.vouches.some((v) => v.dispute) &&
-      state.vouches.some((v) => (v.authority.triggered_rules ?? []).some((r) => r.includes("confidence"))),
-    heading: "Say “I didn't want that” — and the agent gets more careful.",
-    body: "Dispute the purchase from step 2. The mandate's confidence bar moves up on its own (0.85 → 0.88), with no settings edit. Then replay a borderline decision — one confident enough to pass your original 0.85, but not the new bar. Before the dispute it would have gone through; now it is held.",
+    title: "It asks before buying",
+    sub: "one tap is you",
+    done: () => state.vouches.some((v) => startedBy(v, "household") && v.action.status === "Complete"),
+    heading: "Coffee is on Ask — so it suggests, and waits for you.",
+    body: "“You're probably running low on coffee. Want me to order your usual?” One tap is <em>you</em> asking, so it goes through the same gate as anything else — no passkey needed, because your mandate already allows it.",
     watch: [
-      "the bar on the mandate jumps, with “▲ tightened” and a marker where you set it",
-      "the replayed purchase comes back <b>Held</b>, stopped by “agent not confident enough”",
+      "the 🛒 suggestion under <b>Needs you</b>, with the price you usually pay and when it would arrive",
+      "after the tap, a Bought record started by <b>you</b>, not by the agent",
     ],
-    diff: "This is the part nothing else does. KYA, ACP and UCP are static permission systems. Here, what happened last time changes what the agent may do next — a trust relationship, not a log. A good streak loosens it again, but never below the number you set.",
+    diff: "Scheduled Actions add things to your cart and leave the checkout to you. Here, the suggestion is timed by your home's own pace, and answering it <em>is</em> the order.",
     actions: [
-      { label: "1 · Dispute the bought item", primary: true, run: disputeLatestPurchase },
-      { label: "2 · Replay a borderline purchase", run: replayBorderline },
+      { label: "Order the coffee it suggested", primary: true, run: async () => {
+          requireHousehold();
+          if (!hh.items.find((i) => i.item_id === "coffee")?.settings.notice) await advanceDays(1);
+          const coffee = hh.items.find((i) => i.item_id === "coffee");
+          if (!coffee?.settings.notice) throw new Error("No coffee suggestion yet — move the clock forward a day and try again.");
+          await protectedCall("items/coffee/respond", "POST", { response: "order" });
+          toast("Ordered — through the same check as everything else.");
+          await refresh();
+        } },
     ],
-    fine: "The replay acts as the agent with a confidence chosen between your original number and the new one (0.86 for 0.85 → 0.88), so the comparison is exact rather than depending on the number the model happens to report. Each dispute adds 0.03 — a step set by a 12,000-decision simulation, because bigger steps made the agent refuse most of what you actually wanted.",
+  },
+  {
+    title: "It stops at your limit",
+    sub: "the gate holds",
+    done: () => state.vouches.some((v) => (v.authority.triggered_rules ?? []).some((r) => r === "price > max_price" || r === "new_brand")),
+    heading: "Ask for the $27.80 Brand C — over your limit, and a brand you never approved.",
+    body: "The agent is told to <em>propose</em> it rather than refuse on its own, so the refusal is a recorded act of the gate, not an opinion in a chat. Then ask it why.",
+    watch: [
+      "a <b>Held for you</b> record; in How it decided, ✗ <b>$27.80 &gt; $15.00</b> and ✗ <b>Brand C is not one of Brand A, Brand B</b>",
+      "the checkout <b>parked at ready_for_complete</b> — every requirement met, and no order placed",
+      "ask why: the answer is looked up from the record, not made up",
+    ],
+    diff: "The gate runs on the checkout's own <code>ready_for_complete → completed</code> step, so a stop leaves real evidence behind: a checkout one call short of an order.",
+    actions: [
+      { label: "Ask for the $27.80 Brand C", primary: true, chat: true,
+        run: () => { requireHousehold(); return agentOr("Buy the Brand C detergent, the 96-load one. I want the biggest bottle.",
+          { product: "detergent-brand-c", brand: "Brand C", confidence: 0.9, reason: ["largest_size"], mandateId: "m_detergent" }); } },
+      { label: "Ask why it stopped", chat: true, run: async () => {
+          markWhy();
+          if (chatReady) return say("Why didn't you buy the Brand C one?");
+          const held = state.vouches.find((v) => v.action.status === "PendingApproval");
+          if (!held) throw new Error("Nothing is held yet — ask for Brand C first.");
+          document.getElementById(`vouch-${held.vouch_id}`)?.scrollIntoView({ block: "center" });
+          return explain(held.vouch_id);
+        } },
+    ],
+  },
+  {
+    title: "Only you can say yes",
+    sub: "your passkey",
+    done: () => state.vouches.some((v) => v.household_approval || (v.decision.reason ?? []).some((r) => r === "approved_by_household" || r === "declined_by_household")),
+    heading: "Approve it with your passkey — or keep it blocked.",
+    body: "The agent has no tool that can approve anything. Approving needs <b>your</b> fingerprint, face or PIN, and what you sign names this exact purchase. Keeping it blocked cancels the waiting checkout — no passkey needed, because it only takes authority away.",
+    watch: [
+      "your device asks you to confirm “Approve Brand C… — $27.80”",
+      "then <b>🔐 Approved with your passkey</b> on the record — a signature anyone can re-check later",
+    ],
+    diff: "AP2 and Mastercard standardised signed mandates for payments. Here the household's own passkey signs the one purchase it approves, and the signature stays on the record.",
+    actions: [
+      { label: "Show me the held purchase", primary: true, run: () => {
+          const held = state.vouches.find((v) => v.action.status === "PendingApproval");
+          if (!held) throw new Error("Nothing is waiting — do step 4 first.");
+          document.getElementById(`vouch-${held.vouch_id}`)?.scrollIntoView({ block: "center" });
+          toast("Approve (your passkey) or Keep blocked — your choice, on the record.");
+        } },
+      { label: "Set up a passkey first", run: () => {
+          if (passkey.registered) { toast("Your passkey is already set up."); return; }
+          if (location.hostname !== passkey.rp_id) throw new Error(`Open ${location.protocol}//${passkey.rp_id}:${location.port} — browsers don't allow passkeys on an IP address.`);
+          return setUpPasskey();
+        } },
+    ],
+  },
+  {
+    title: "Say you didn't want it",
+    sub: "trust tightens",
+    done: () => state.vouches.some((v) => v.dispute),
+    heading: "Tell it “I didn't want that” — and it gets more careful.",
+    body: "Say it in the chat. The agent finds the purchase and records the dispute. Detergent drops from <b>Auto</b> back to <b>Ask</b> at once, and the confidence bar tightens — no settings screen.",
+    watch: [
+      "the chat step <b>tightened your mandate</b>",
+      "the detergent card: <b>“Moved from Auto to Ask — you disputed a purchase it made”</b>",
+      "optional: replay a borderline purchase — it went through before; now it's held",
+    ],
+    diff: "Their dispute gets your money back. Ours changes what the agent is allowed to do next time — a trust relationship, not a log.",
+    actions: [
+      { label: "Tell it you didn't want the detergent", primary: true, chat: true, run: async () => {
+          if (!detergentBought()) throw new Error("Nothing to dispute yet — do step 2 first.");
+          if (!chatReady) await chatBanner();
+          if (chatReady) return say("I didn't want that detergent you bought on your own.");
+          disputeLatestPurchase();
+        } },
+      { label: "Replay a borderline purchase", run: replayBorderline },
+    ],
+  },
+  {
+    title: "Check the record",
+    sub: "tamper-evident",
+    done: () => recordSeen,
+    heading: "Everything above is on a record that can't be quietly rewritten.",
+    body: "Every record is chained, and every passkey approval signs the chain. Simulate someone editing an old price straight in the database — and watch it get caught and named.",
+    watch: [
+      "<b>✓ Record verified</b> above the purchases",
+      "after the simulated edit: <b>⚠ This record has been altered outside the app</b>, naming which purchase",
+    ],
+    diff: "Audit trails aren't new — ACP shipped machine-readable ones for merchants. This one is written for the household, and it can prove it hasn't been edited.",
+    actions: [
+      { label: "Simulate someone editing an old record", primary: true, run: async () => {
+          recordSeen = true; setFlag("vouch.recordSeen");
+          await tamperDemo();
+        } },
+      { label: "Just show me the record", run: () => {
+          recordSeen = true; setFlag("vouch.recordSeen");
+          document.getElementById("recordStatus")?.scrollIntoView({ block: "center" });
+          renderTour();
+        } },
+    ],
   },
 ];
 
@@ -798,7 +870,7 @@ function renderTour() {
       ${b.fine ? `<div class="fine">${b.fine}</div>` : ""}
       ${b.actions.some((a) => a.chat) && !chatReady
         ? `<div class="fine">No model is configured, so these buttons act as the agent directly through the same gate.</div>` : ""}
-      ${allDone ? `<div class="fine"><b>That's the whole loop:</b> rule → real action → real stop → real explanation → real adjustment.</div>` : ""}
+      ${allDone ? `<div class="fine"><b>That's the whole idea:</b> a home that hands over its buying as far as it chooses — a real gate, a record you can question, and trust that moves with what actually happened.</div>` : ""}
     </div>
     <div>
       <div class="eyebrow">What to watch for</div>
@@ -862,7 +934,7 @@ async function seedMandate() {
 }
 
 function disputeLatestPurchase() {
-  const bought = state.vouches.find((v) => v.action.status === "Complete" && !v.dispute);
+  const bought = detergentBought() ?? state.vouches.find((v) => v.action.status === "Complete" && !v.dispute);
   if (!bought) { toast("Nothing bought to dispute yet — do step 2 first.", true); return; }
   document.getElementById(`vouch-${bought.vouch_id}`)?.scrollIntoView({ block: "center" });
   openDispute(bought.vouch_id);
@@ -1705,14 +1777,15 @@ for (const [id, outcome] of [["bellCorroborated", "corroborated"], ["bellUnconfi
   });
 }
 
-$("tamperBtn").addEventListener("click", async () => {
+async function tamperDemo() {
   try {
     const r = await household("demo/tamper", { method: "POST", body: "{}" });
     toast(`Edited an old price in the database: $${Number(r.price_was).toFixed(2)} → $${Number(r.price_now).toFixed(2)}. Now look at the record.`);
   } catch (e) { toast(e.message, true); }
   await refresh();
   document.getElementById("recordStatus")?.scrollIntoView({ block: "center" });
-});
+}
+$("tamperBtn").addEventListener("click", tamperDemo);
 
 /* ---------- the household ---------- */
 
