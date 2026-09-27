@@ -79,11 +79,17 @@ export async function handleHouseholdRequest(
      * its own reasons to buy.
      */
     if (agent && pathname.startsWith("/household/pantry") && method === "GET") {
-      send(res, 200, { today: agent.today(), set_up: agent.isSetUp(), items: agent.pantry() });
+      send(res, 200, {
+        today: agent.today(),
+        date: agent.dateOf(agent.today()),
+        set_up: agent.isSetUp(),
+        items: agent.isSetUp() ? agent.pantry() : [],
+      });
       return true;
     }
     if (agent && pathname === "/household/demo/setup" && method === "POST") {
-      send(res, 200, { today: agent.today(), items: agent.setUpDemo() });
+      const items = agent.setUpDemo();
+      send(res, 200, { today: agent.today(), date: agent.dateOf(agent.today()), set_up: true, items });
       return true;
     }
     if (agent && pathname === "/household/clock/advance" && method === "POST") {

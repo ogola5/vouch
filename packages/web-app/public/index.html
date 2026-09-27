@@ -153,6 +153,55 @@
   .chip { display: inline-block; font-size: 12px; background: var(--hold-bg); color: var(--hold);
           padding: 2px 9px; border-radius: 6px; margin: 2px 4px 2px 0; font-weight: 500; }
 
+  /* ---------- the household ---------- */
+  .hh-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .hh-date { font-size: 13px; color: var(--muted); }
+  .hh-date b { color: var(--ink); font-weight: 650; }
+  .hh-controls { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .needs { display: grid; gap: 10px; margin: 12px 0 16px; }
+  .need { border-radius: 12px; padding: 14px 16px; border: 1px solid var(--line); background: var(--sunk);
+          display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; animation: rise .25s ease; }
+  .need.ask { border-color: var(--accent); background: var(--accent-bg); }
+  .need.remind { border-color: var(--info); background: var(--info-bg); }
+  .need.offer { border-color: var(--ok); background: var(--ok-bg); }
+  .need.held { border-color: var(--hold); background: var(--hold-bg); }
+  .need-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+               background: var(--panel); font-size: 17px; border: 1px solid var(--line); }
+  .need-text { font-size: 14.5px; line-height: 1.5; }
+  .need-text .why { display: block; font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .need .actions { margin-top: 10px; }
+  .need select { width: auto; padding: 5px 8px; font-size: 13px; }
+  .calm { color: var(--muted); font-size: 14px; padding: 10px 2px; }
+  .items { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .item { border: 1px solid var(--line); border-radius: 12px; padding: 13px; background: var(--sunk);
+          display: flex; flex-direction: column; gap: 8px; }
+  .item-top { display: flex; align-items: center; gap: 8px; }
+  .item-top h4 { margin: 0; font-size: 14.5px; flex: 1; }
+  .mode { font-size: 11.5px; font-weight: 650; padding: 2px 9px; border-radius: 999px; }
+  .mode.auto { background: var(--ok-bg); color: var(--ok); }
+  .mode.ask { background: var(--accent-bg); color: var(--accent); }
+  .mode.remind { background: var(--info-bg); color: var(--info); }
+  .left { font-size: 13px; }
+  .left b { font-size: 18px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .gauge { position: relative; height: 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; }
+  .gauge-range { position: absolute; top: 0; bottom: 0; background: var(--accent-bg); }
+  .gauge-mid { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--accent); border-radius: 2px; }
+  .gauge.low .gauge-mid { background: var(--hold); }
+  .item .why { font-size: 12px; color: var(--muted); }
+  .item .change { font-size: 12px; color: var(--ink); background: var(--panel); border-radius: 8px; padding: 6px 8px; border: 1px solid var(--line); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 5px 10px; font-size: 12.5px; background: var(--panel); }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); }
+  .item-foot { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .item-foot label { display: inline-flex; align-items: center; gap: 5px; margin: 0; font-size: 12px; }
+  .item-foot input[type="date"] { width: auto; padding: 4px 6px; font-size: 12px; }
+  .log { font-size: 13px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .log li { margin-bottom: 3px; }
+  .log ul { margin: 6px 0 0; padding-left: 18px; }
+  .nobody { font-size: 12.5px; margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+            background: var(--panel); border: 1px dashed var(--line); }
+
   /* ---------- conversation ---------- */
   .chat { display: flex; flex-direction: column; }
   .transcript { display: flex; flex-direction: column; gap: 14px; margin-bottom: 12px;
@@ -326,6 +375,30 @@
     </div>
     <div class="beats" id="beats" role="tablist"></div>
     <div class="beat-detail" id="beatDetail"></div>
+  </section>
+
+  <!-- THE HOUSEHOLD: what the agent may do for each item, and what needs you -->
+  <section class="panel" id="hhPanel" aria-labelledby="hhTitle" style="margin-bottom:16px">
+    <div class="hh-head">
+      <div>
+        <div class="eyebrow">Your household agent</div>
+        <h3 id="hhTitle">What's running low, and what it may do about it</h3>
+      </div>
+      <div class="hh-controls">
+        <span class="hh-date" id="hhDate"></span>
+        <button class="small" id="hhFwd1" title="Demo control: move the household's clock forward">+1 day</button>
+        <button class="small" id="hhFwd7" title="Demo control: move the household's clock forward">+1 week</button>
+        <button class="small primary" id="hhSetup">Load the demo household</button>
+      </div>
+    </div>
+    <p class="hint">
+      Each item is handed over as far as you choose: <b>Remind</b> tells you, <b>Ask</b> suggests an
+      order and waits, <b>Auto</b> buys within your limits and tells you after. It earns more only
+      when you say so, and loses it the moment you dispute something.
+    </p>
+    <div class="needs" id="hhNeeds"></div>
+    <div class="items" id="hhItems"></div>
+    <div class="log" id="hhLog" hidden></div>
   </section>
 
   <div class="main">
@@ -917,6 +990,27 @@ function confidenceText(v) {
   return `agent confidence <b class="${below ? "up-arrow" : ""}">${score.toFixed(2)}</b> ${below ? "&lt;" : "≥"} your bar ${bar.toFixed(2)}`;
 }
 
+/**
+ * Why the gate's number was what it was, and — when nobody asked — why the
+ * agent acted at all. The record has to be able to say "nobody asked" out
+ * loud, or an unprompted purchase looks like any other.
+ */
+function evidenceLine(v) {
+  const b = v.authority.confidence_basis;
+  const h = v.household;
+  const parts = [];
+  if (h && h.initiated_by === "forecast") {
+    const left = h.days_left ? `about ${Math.max(0, Math.round(h.days_left.median))} days were left` : "it was running low";
+    const arrives = h.delivery_day !== null && hh.date ? ` · arriving ${esc(niceDate(h.delivery_day))}` : "";
+    parts.push(`<b>Nobody asked — your household agent did this on its own:</b> you get about ${Math.round(h.days_per_pack)} days from one and ${esc(left)}${arrives}.`);
+  }
+  if (b) {
+    const claimed = b.agent_claimed !== null && b.agent_claimed !== b.evidence ? ` The agent itself said ${b.agent_claimed.toFixed(2)}; the evidence said ${b.evidence.toFixed(2)}, and the lower one counts.` : "";
+    parts.push(`<span class="meta">Evidence: ${esc(b.notes.need)} · ${esc(b.notes.product)} · ${esc(b.notes.price)}.${esc(claimed)}</span>`);
+  }
+  return parts.length ? `<div class="nobody">${parts.join("<br>")}</div>` : "";
+}
+
 function correlationText(status) {
   if (status === "corroborated") return "corroborated";
   if (status === "unconfirmed") return "unconfirmed";
@@ -994,6 +1088,7 @@ function renderVouches() {
           ${new Date(v.created_at).toLocaleString()} · ${confidenceText(v)}${reasons ? ` · ${esc(reasons)}` : ""}
         </div>
         ${chain(v)}
+        ${evidenceLine(v)}
         ${rules ? `<div style="margin-top:8px"><span class="meta">Stopped by:</span> ${rules}</div>` : ""}
         ${d ? `<div class="meta" style="margin-top:8px">You disputed it: “${esc(d.reason ?? "no reason given")}”${
           d.confidence_threshold_delta ? ` — threshold <b class="up-arrow">+${d.confidence_threshold_delta.toFixed(2)}</b>` : ""}</div>` : ""}
@@ -1315,12 +1410,263 @@ async function chatBanner() {
   }
 }
 
+/* ---------- the household ---------- */
+
+let hh = { set_up: false, today: null, date: null, items: [] };
+let hhLog = [];
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MODE_NAME = { remind: "Remind", ask: "Ask", auto: "Auto" };
+
+/** A household day as a calendar date, from the date the pantry reported for today. */
+function dateOfDay(day) {
+  const base = Date.parse(`${hh.date}T00:00:00Z`);
+  return new Date(base + (day - hh.today) * 86400000);
+}
+function niceDate(day) {
+  return dateOfDay(day).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+}
+function niceIso(iso) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+const itemName = (id) => hh.items.find((i) => i.item_id === id)?.name ?? id;
+
+/**
+ * "About 4 days — could be sooner." Uncertainty said gently and honestly: the
+ * forecast's range is real, but "0 to 15 days" reads as a shrug, and a
+ * household should not have to read statistics to know whether to worry.
+ */
+function daysLeftText(f) {
+  if (f.status === "out") return "You're out";
+  if (!f.daysLeft) return "No history yet";
+  const mid = f.daysLeft.median;
+  const around = mid < 1 ? "less than a day" : `about ${Math.round(mid)} day${Math.round(mid) === 1 ? "" : "s"}`;
+  const soon = f.daysLeft.low < 1 && mid >= 1 ? " — could be sooner" : "";
+  return `${around} left${soon}`;
+}
+function paceText(item) {
+  const pace = Math.round(item.forecast.pace.daysPerPack);
+  const last = item.lastPurchase ? hh.today - item.lastPurchase.day : null;
+  const basis = item.forecast.pace.basis === "your history" ? "" : ` (${item.forecast.pace.basis})`;
+  return `You get about ${pace} days from one${basis}${last !== null && last >= 0 ? ` · last one arrived ${last === 0 ? "today" : `${last} day${last === 1 ? "" : "s"} ago`}` : ""}`;
+}
+function modeText(a) {
+  if (!a) return "";
+  const until = a.until ? ` until ${niceIso(a.until)}` : "";
+  const days = a.delivery_days ? ` · delivered ${a.delivery_days.length === 2 && a.delivery_days.includes(0) && a.delivery_days.includes(6) ? "weekends" : a.delivery_days.map((d) => WEEKDAYS[d]).join("/")}` : "";
+  return `${MODE_NAME[a.mode]}${until}${days}`;
+}
+
+/** What the household needs to decide, in plain words. At most one per item. */
+function needsFor(item) {
+  const n = item.settings.notice;
+  const name = esc(item.name.toLowerCase());
+  if (item.awaitingApproval) {
+    return {
+      cls: "held", icon: "✋",
+      text: `Your agent tried to buy ${name}, but it's outside what you allowed — so no order was placed.
+             <span class="why">It's waiting in the record below. Only you can approve it.</span>`,
+      actions: `<button class="small" data-hh-see="${esc(item.awaitingApproval)}">Show me</button>`,
+    };
+  }
+  if (item.settings.promotion) {
+    return {
+      cls: "offer", icon: "🤝",
+      text: `You've said yes to ${name} four times in a row, exactly as suggested. Want your agent to handle it on its own until ${esc(niceIso(item.settings.promotion.until))}?
+             <span class="why">It will still buy only within your limits and tell you each time. A dispute hands it straight back to you.</span>`,
+      actions: `<button class="small primary" data-hh-respond="${item.item_id}" data-r="accept_promotion">Hand it over</button>
+                <button class="small" data-hh-respond="${item.item_id}" data-r="decline_promotion">Keep asking me</button>`,
+    };
+  }
+  if (n) {
+    // When an order placed TODAY would arrive. A suggestion left unanswered
+    // for days must not keep promising the delivery date it had when it was
+    // made — that date may be in the past. (Found by rendering it.)
+    const lead = n.delivery_day - n.day;
+    const arrives = esc(niceDate(Math.max(n.delivery_day, hh.today + lead)));
+    const price = n.usual_price !== null ? ` (usually $${Number(n.usual_price).toFixed(2)})` : "";
+    const why = `<span class="why">${esc(daysLeftText(item.forecast))} · ${esc(paceText(item))}</span>`;
+    const snooze = `<select data-hh-snooze="${item.item_id}" aria-label="Remind me later">
+        <option value="">Remind me…</option>
+        <option value="3">in 3 days</option>
+        <option value="7">next week</option>
+      </select>`;
+    return n.kind === "ask"
+      ? {
+          cls: "ask", icon: "🛒",
+          text: `You're probably running low on ${name}. Want me to order your usual ${esc(n.brand)}${esc(price)}? It would arrive ${arrives}.${why}`,
+          actions: `<button class="small primary" data-hh-respond="${item.item_id}" data-r="order">Order it</button>
+                    <button class="small" data-hh-respond="${item.item_id}" data-r="not_yet">Not yet</button> ${snooze}`,
+        }
+      : {
+          cls: "remind", icon: "🔔",
+          text: `Just so you know — you might be running low on ${name}.${why}`,
+          actions: `<button class="small" data-hh-respond="${item.item_id}" data-r="order">Order my usual</button>
+                    <button class="small" data-hh-respond="${item.item_id}" data-r="not_yet">Got it</button> ${snooze}`,
+        };
+  }
+  if (item.settings.pendingQuestionDay !== null) {
+    return {
+      cls: "", icon: "❓",
+      text: `Roughly how much is left of your ${name}? <span class="why">One tap helps it order at the right time instead of guessing.</span>`,
+      actions: `<button class="small" data-hh-level="${item.item_id}" data-p="0">We're out</button>
+                <button class="small" data-hh-level="${item.item_id}" data-p="0.1">Almost out</button>
+                <button class="small" data-hh-level="${item.item_id}" data-p="0.5">About half</button>
+                <button class="small" data-hh-level="${item.item_id}" data-p="1">A full one</button>`,
+    };
+  }
+  return null;
+}
+
+function itemCard(item) {
+  const f = item.forecast;
+  const a = item.autonomy;
+  // Gauge: 0 to a month. The shaded band is the forecast's 80% range.
+  const scale = (d) => Math.max(0, Math.min(100, (d / 30) * 100));
+  const range = f.daysLeft
+    ? `<div class="gauge-range" style="left:${scale(f.daysLeft.low)}%;width:${Math.max(2, scale(f.daysLeft.high) - scale(f.daysLeft.low))}%"></div>
+       <div class="gauge-mid" style="left:calc(${scale(f.daysLeft.median)}% - 1px)"></div>`
+    : "";
+  const state = item.awaitingApproval
+    ? '<span class="badge hold">waiting for you</span>'
+    : f.orderOnTheWay ? '<span class="badge ok">on its way</span>' : "";
+  const change = item.settings.lastModeChange
+    ? `<div class="change">Moved from ${MODE_NAME[item.settings.lastModeChange.from]} to <b>${MODE_NAME[item.settings.lastModeChange.to]}</b> on ${esc(niceDate(item.settings.lastModeChange.day))} — ${esc(item.settings.lastModeChange.why)}.</div>`
+    : "";
+  const mode = a?.mode ?? "ask";
+  const weekends = a?.delivery_days?.length === 2 && a.delivery_days.includes(0) && a.delivery_days.includes(6);
+  return `
+    <div class="item" id="hh-${item.item_id}">
+      <div class="item-top">
+        <h4>${esc(item.name)}</h4>
+        <span class="mode ${mode}">${esc(modeText(a))}</span>
+      </div>
+      <div class="left"><b>${esc(daysLeftText(f))}</b> ${state}</div>
+      <div class="gauge ${f.daysLeft && f.daysLeft.median < 4 ? "low" : ""}" title="the shaded band is where it could really be">${range}</div>
+      <div class="why">${esc(paceText(item))}</div>
+      ${change}
+      <div class="item-foot">
+        <div class="seg" role="group" aria-label="What may your agent do for ${esc(item.name)}?">
+          ${["remind", "ask", "auto"].map((m) => `<button class="${m === mode ? "on" : ""}" data-hh-mode="${item.item_id}" data-m="${m}">${MODE_NAME[m]}</button>`).join("")}
+        </div>
+        ${mode === "auto" ? `<label>until <input type="date" data-hh-until="${item.item_id}" value="${esc(a?.until ?? "")}"></label>` : ""}
+        <label><input type="checkbox" data-hh-weekends="${item.item_id}" ${weekends ? "checked" : ""} style="width:auto"> weekends only</label>
+      </div>
+      <div class="item-foot">
+        <button class="small ghost" data-hh-level="${item.item_id}" data-p="0">We're out</button>
+        <button class="small ghost" data-hh-plenty="${item.item_id}">Plenty left</button>
+      </div>
+    </div>`;
+}
+
+const LOG_TEXT = {
+  proposed: (a) => a.outcome === "completed" ? `bought ${itemName(a.item_id).toLowerCase()} on its own` : `tried to buy ${itemName(a.item_id).toLowerCase()} — held for you`,
+  notified: (a) => a.mode === "ask" ? `asked you about ${itemName(a.item_id).toLowerCase()}` : `reminded you about ${itemName(a.item_id).toLowerCase()}`,
+  asked: (a) => `asked how much ${itemName(a.item_id).toLowerCase()} is left`,
+  autonomy_expired: (a) => `stopped buying ${itemName(a.item_id).toLowerCase()} on its own — the time you set ran out`,
+  failed: (a) => `couldn't order ${itemName(a.item_id).toLowerCase()}: ${a.error}`,
+};
+
+function renderHousehold() {
+  $("hhSetup").hidden = hh.set_up;
+  $("hhFwd1").hidden = !hh.set_up;
+  $("hhFwd7").hidden = !hh.set_up;
+  $("hhDate").innerHTML = hh.set_up && hh.date ? `<b>${esc(niceDate(hh.today))}</b>` : "";
+
+  if (!hh.set_up) {
+    $("hhNeeds").innerHTML = `<div class="calm">No household yet. Load the demo household — six everyday items, each handed over a different amount — then move the clock forward and watch what it does.</div>`;
+    $("hhItems").innerHTML = "";
+    $("hhLog").hidden = true;
+    return;
+  }
+
+  const needs = hh.items.map(needsFor).filter(Boolean);
+  $("hhNeeds").innerHTML = needs.length
+    ? needs.map((n) => `<div class="need ${n.cls}"><div class="need-icon" aria-hidden="true">${n.icon}</div>
+        <div><div class="need-text">${n.text}</div><div class="actions">${n.actions}</div></div></div>`).join("")
+    : `<div class="calm">Nothing needs you right now.</div>`;
+  $("hhItems").innerHTML = hh.items.map(itemCard).join("");
+
+  if (hhLog.length) {
+    $("hhLog").hidden = false;
+    $("hhLog").innerHTML = `<b>What happened</b><ul>${hhLog
+      .map((a) => `<li><span class="meta">${esc(niceDate(a.day))}</span> — your agent ${esc((LOG_TEXT[a.kind] ?? (() => a.kind))(a))}</li>`)
+      .join("")}</ul>`;
+  } else {
+    $("hhLog").hidden = true;
+  }
+
+  const post = (path, body) =>
+    household(path, { method: "POST", body: JSON.stringify(body ?? {}) });
+  const run = async (fn) => {
+    try { await fn(); } catch (e) { toast(e.message, true); }
+    await refresh();
+  };
+
+  $("hhNeeds").querySelectorAll("[data-hh-respond]").forEach((b) => b.addEventListener("click", () => run(async () => {
+    const r = await post(`items/${encodeURIComponent(b.dataset.hhRespond)}/respond`, { response: b.dataset.r });
+    if (r.result) toast(r.result.outcome === "completed" ? "Ordered — through the same check as everything else." : "Held — it's outside what you allowed.", r.result.outcome !== "completed");
+    else if (b.dataset.r === "accept_promotion") toast("Handed over. It will tell you each time it buys.");
+  })));
+  $("hhNeeds").querySelectorAll("[data-hh-snooze]").forEach((s) => s.addEventListener("change", () => {
+    if (!s.value) return;
+    run(() => post(`items/${encodeURIComponent(s.dataset.hhSnooze)}/respond`, { response: "snooze", until_day: hh.today + Number(s.value) }));
+  }));
+  $("hhNeeds").querySelectorAll("[data-hh-see]").forEach((b) => b.addEventListener("click", () =>
+    document.getElementById(`vouch-${b.dataset.hhSee}`)?.scrollIntoView({ block: "center" })));
+
+  document.querySelectorAll("#hhPanel [data-hh-level]").forEach((b) => b.addEventListener("click", () => run(() => {
+    const packs = Number(b.dataset.p);
+    return post(`items/${encodeURIComponent(b.dataset.hhLevel)}/statement`, packs === 0 ? { kind: "runout" } : { kind: "level", packs });
+  })));
+  $("hhItems").querySelectorAll("[data-hh-plenty]").forEach((b) => b.addEventListener("click", () =>
+    run(() => post(`items/${encodeURIComponent(b.dataset.hhPlenty)}/statement`, { kind: "plenty" }))));
+  $("hhItems").querySelectorAll("[data-hh-mode]").forEach((b) => b.addEventListener("click", () => run(() => {
+    const change = { mode: b.dataset.m };
+    if (b.dataset.m !== "auto") change.until = null;
+    return post(`items/${encodeURIComponent(b.dataset.hhMode)}/mode`, change);
+  })));
+  $("hhItems").querySelectorAll("[data-hh-until]").forEach((i) => i.addEventListener("change", () =>
+    run(() => post(`items/${encodeURIComponent(i.dataset.hhUntil)}/mode`, { until: i.value || null }))));
+  $("hhItems").querySelectorAll("[data-hh-weekends]").forEach((c) => c.addEventListener("change", () =>
+    run(() => post(`items/${encodeURIComponent(c.dataset.hhWeekends)}/mode`, { delivery_days: c.checked ? [0, 6] : null }))));
+}
+
+async function refreshHousehold() {
+  try {
+    hh = await api("/api/household/pantry");
+    renderHousehold();
+  } catch { /* the household surface is optional; the rest of the page still works */ }
+}
+
+async function advanceDays(days) {
+  try {
+    const r = await household("clock/advance", { method: "POST", body: JSON.stringify({ days }) });
+    hhLog = r.actions;
+    if (!r.actions.length) toast(`Nothing needed doing — it's ${niceDate(r.today)}.`);
+  } catch (e) { toast(e.message, true); }
+  await refresh();
+}
+
+$("hhFwd1").addEventListener("click", () => advanceDays(1));
+$("hhFwd7").addEventListener("click", () => advanceDays(7));
+$("hhSetup").addEventListener("click", async () => {
+  try {
+    await household("demo/setup", { method: "POST", body: "{}" });
+    hhLog = [];
+    toast("Demo household loaded. Move the clock forward to see what it does.");
+  } catch (e) { toast(e.message, true); }
+  await refresh();
+});
+
 async function refresh() {
   try {
     const data = await api("/api/state");
     state = { mandates: data.mandates, vouches: data.vouches, catalog: data.catalog };
     $("dot").className = "dot up";
     $("statusText").textContent = "connected";
+    // The household first: vouch cards read its clock to date "bought on its own" lines.
+    await refreshHousehold();
     renderCatalog(); renderMandates(); renderSelectors(); renderPending(); renderVouches(); renderTour();
   } catch (e) {
     $("dot").className = "dot down";

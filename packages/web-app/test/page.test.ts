@@ -135,6 +135,45 @@ describe("the console page holds together", () => {
     assert.match(code, /setTimeout\(chatBanner/, "a failed health check should be retried, not believed");
   });
 
+  it("answers a notice through the household's own routes, never through approval", () => {
+    // An in-limits "Order it" is the household asking — it goes through the
+    // gate as a request. Approving something the gate HELD is a different,
+    // deliberate act, and the household panel must not blur the two.
+    const code = withoutComments(scriptBody());
+    const panel = /function renderHousehold\(\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    const needs = /function needsFor\(item\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.ok(panel && needs, "the household panel should be rendered by renderHousehold/needsFor");
+    assert.match(panel, /\/respond`/);
+    assert.ok(!/approve/.test(panel), "the household panel must not call approve");
+    assert.match(needs, /data-r="order"/);
+    assert.match(needs, /Only you can approve it/, "a held purchase points to the record, where approval lives");
+  });
+
+  it("says uncertainty gently instead of printing a raw range", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /could be sooner/);
+    assert.ok(!/\$\{f\.daysLeft\.low\}/.test(code), "a raw '0 to 15 days' reads as a shrug");
+  });
+
+  it("escapes every item name and brand it puts into the page", () => {
+    const code = withoutComments(scriptBody());
+    for (const raw of ["${item.name}", "${n.brand}", "${name}"]) {
+      // `name` is built with esc() once, then reused; the other two must be wrapped at use.
+      if (raw === "${name}") assert.match(code, /const name = esc\(item\.name/);
+      else assert.ok(!code.includes(raw), `${raw} is interpolated without esc()`);
+    }
+  });
+
+  it("dates a suggestion from today, not from when it was made", () => {
+    // Rendering the real pantry showed "it would arrive Wed, Sep 30" on Oct 4.
+    const needs = /function needsFor\(item\) \{([\s\S]*?)\n\}/.exec(withoutComments(scriptBody()))?.[1] ?? "";
+    assert.match(needs, /Math\.max\(n\.delivery_day, hh\.today \+ lead\)/);
+  });
+
+  it("can say 'nobody asked' on the record", () => {
+    assert.match(scriptBody(), /Nobody asked — your household agent did this on its own/);
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);

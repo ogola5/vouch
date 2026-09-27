@@ -473,7 +473,18 @@ orders arrive on allowed days. Service clock follows the household clock once on
 `propose_purchase` and `create_mandate` now name their fields, and tests send smuggled `household` /
 `autonomy` over MCP and assert both are ignored. Found on the way: a purchase approved days after it
 was held was dated to arrive before it was placed. Noticed, for 4b: day 101 of the demo still has
-four events at once, and opening ranges are wide (detergent 0-15 days) until a question is answered. Bedrock's part (kind notifications, understanding replies, instructions →
+four events at once, and opening ranges are wide (detergent 0-15 days) until a question is answered.
+**4b DONE 2026-09-28.** "Your household agent" panel in the console: a "needs you" list (Ask
+suggestion with Order it / Not yet / Remind me…; Remind notice; "how much is left?" one-tap answers;
+the 90-day hand-over offer; a pointer to any held purchase, whose approval stays in the record), item
+cards with mode switcher (Remind/Ask/Auto, until-date, weekends only), days left said gently ("about 4
+days — could be sooner") over a shaded range, the last mode change and why, and "What happened" after
+each fast-forward. The record now shows the evidence on every Vouch and says **"Nobody asked"** for
+forecast purchases. Wording is a kind template; W6 hands it to Bedrock. Verified by running the page's
+own script against a real pantry in a fake DOM, which found two bugs no test had: an unanswered
+suggestion kept promising a delivery date already past, and "how much paper towels is left".
+**For W5:** the five-step tour still tells the chat-only story; rework it to demo script v2 (household
+first). Bedrock's part (kind notifications, understanding replies, instructions →
 time-bound mandates, measured on ~30 cases) moves into W6.
 
 **W2 design — AGREED WITH THE OWNER 2026-09-27.** *Numbers from arithmetic, words from the model.*

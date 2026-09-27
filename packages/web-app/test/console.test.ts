@@ -6,7 +6,7 @@ import { VouchStore } from "@vouch/db";
 import { startMerchantServer } from "@vouch/mock-merchant";
 import { RuleBasedReasoningProvider } from "@vouch/reasoning";
 import { MockRingProvider } from "@vouch/ring-integration";
-import { HttpMerchantClient, VouchService, startVouchHttpServer } from "@vouch/mcp-server";
+import { HouseholdAgent, HttpMerchantClient, VouchService, startVouchHttpServer } from "@vouch/mcp-server";
 import { startWebApp } from "@vouch/web-app";
 
 /**
@@ -42,7 +42,8 @@ before(async () => {
     physicalEvidence: new MockRingProvider(),
   });
 
-  const mcpStarted = await startVouchHttpServer(0, { service });
+  const householdAgent = new HouseholdAgent({ store, service });
+  const mcpStarted = await startVouchHttpServer(0, { service, householdAgent });
   mcp = mcpStarted.server;
   household = mcpStarted.householdServer;
 
@@ -283,5 +284,44 @@ describe("the console cannot misreport the gate", () => {
 
     const after = await get<{ mandates: { confidence_threshold: number }[] }>("/api/state");
     assert.equal(after.mandates[0]?.confidence_threshold, 0.88, "the page sees the new authority");
+  });
+});
+
+describe("the household panel reaches the household agent through the page", () => {
+  // Last in the file on purpose: loading a household sets the system clock
+  // to the household's, which the earlier tests do not expect.
+  const post = async <T>(path: string, body: unknown = {}): Promise<T> => {
+    const response = await fetch(`${web.url}/api/household/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    assert.ok(response.ok, `POST ${path} -> ${response.status}`);
+    return (await response.json()) as T;
+  };
+
+  it("starts empty, loads the demo household, and dates it", async () => {
+    const empty = await get<{ set_up: boolean; items: unknown[] }>("/api/household/pantry");
+    assert.equal(empty.set_up, false);
+    assert.equal(empty.items.length, 0);
+
+    const loaded = await post<{ set_up: boolean; date: string; items: { autonomy: { mode: string } }[] }>("demo/setup");
+    assert.equal(loaded.set_up, true);
+    assert.match(loaded.date, /^\d{4}-\d{2}-\d{2}$/, "the page needs a real date to say 'arrives Saturday'");
+    assert.deepEqual(
+      [...new Set(loaded.items.map((i) => i.autonomy.mode))].sort(),
+      ["ask", "auto", "remind"],
+      "the demo shows all three modes"
+    );
+  });
+
+  it("moves the clock and reports what the agent did, in the same call", async () => {
+    // A week, not three days: earlier tests in this file leave a HELD Brand C
+    // purchase on the detergent mandate, and the agent rightly waits for the
+    // household on that item — so it is toilet paper (Auto, weekends) that buys.
+    const r = await post<{ actions: { kind: string; item_id: string }[] }>("clock/advance", { days: 7 });
+    assert.ok(!r.actions.some((a) => a.item_id === "detergent" && a.kind === "proposed"), "detergent waits for the held purchase");
+    assert.ok(r.actions.some((a) => a.kind === "proposed"), "an Auto item should have bought something");
+    assert.ok(r.actions.some((a) => a.kind === "notified"), "Ask or Remind should have told the household");
   });
 });
