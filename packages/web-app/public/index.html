@@ -904,6 +904,19 @@ function statusBadge(v) {
   return `<span class="badge plain">${esc(s)}</span>`;
 }
 
+/**
+ * The two numbers the gate compared, when the record has them. The band
+ * alone produced "confidence high" next to "not confident enough" (0.86 is
+ * high, and still under a tightened 0.88); the numbers say which was true.
+ */
+function confidenceText(v) {
+  const score = v.authority.confidence_score;
+  const bar = v.authority.threshold_applied;
+  if (typeof score !== "number" || typeof bar !== "number") return `confidence ${esc(v.confidence)}`;
+  const below = score < bar;
+  return `agent confidence <b class="${below ? "up-arrow" : ""}">${score.toFixed(2)}</b> ${below ? "&lt;" : "≥"} your bar ${bar.toFixed(2)}`;
+}
+
 function correlationText(status) {
   if (status === "corroborated") return "corroborated";
   if (status === "unconfirmed") return "unconfirmed";
@@ -978,7 +991,7 @@ function renderVouches() {
           <span class="price">${money(v.decision.price)}</span>
         </div>
         <div class="meta" style="margin-top:4px">
-          ${new Date(v.created_at).toLocaleString()} · confidence ${esc(v.confidence)}${reasons ? ` · ${esc(reasons)}` : ""}
+          ${new Date(v.created_at).toLocaleString()} · ${confidenceText(v)}${reasons ? ` · ${esc(reasons)}` : ""}
         </div>
         ${chain(v)}
         ${rules ? `<div style="margin-top:8px"><span class="meta">Stopped by:</span> ${rules}</div>` : ""}

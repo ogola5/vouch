@@ -321,6 +321,8 @@ export class VouchService {
           mandate_id: mandate.mandate_id,
           within_bounds: false,
           triggered_rules: evaluation.triggeredRules,
+          confidence_score: input.confidence,
+          threshold_applied: mandate.confidence_threshold,
         },
         decision: { product, price: unitPriceMajor, reason: input.reason },
         action: { ucp_session_id: session.id, status: "PendingApproval" },
@@ -361,7 +363,8 @@ export class VouchService {
       product,
       unitPriceMajor,
       reason: input.reason,
-      confidence: input.confidence,
+      confidenceScore: input.confidence,
+      thresholdApplied: mandate.confidence_threshold,
       evaluation,
     });
   }
@@ -399,7 +402,12 @@ export class VouchService {
       product: held.decision.product,
       unitPriceMajor: held.decision.price,
       reason: [...held.decision.reason, "approved_by_household"],
-      confidence: 1,
+      // The AGENT's numbers from when it proposed, not a synthetic 1. The
+      // household's yes does not make the agent retroactively confident, and
+      // recording it as "high" would misstate what the agent believed.
+      confidenceScore: held.authority.confidence_score,
+      thresholdApplied: held.authority.threshold_applied,
+      confidenceBand: held.confidence,
       evaluation: {
         withinBounds: true,
         requiresApproval: false,
@@ -542,7 +550,11 @@ export class VouchService {
     product: string;
     unitPriceMajor: number;
     reason: string[];
-    confidence: number;
+    /** Null only for an approval of a record that predates these fields. */
+    confidenceScore: number | null;
+    thresholdApplied: number | null;
+    /** Given when approving, so the band is carried over rather than recomputed. */
+    confidenceBand?: ConfidenceLevel;
     evaluation: MandateEvaluation;
     vouchId?: string;
   }): Promise<ProposePurchaseResult> {
@@ -580,6 +592,8 @@ export class VouchService {
         mandate_id: mandate.mandate_id,
         within_bounds: evaluation.withinBounds,
         triggered_rules: evaluation.triggeredRules,
+        confidence_score: args.confidenceScore,
+        threshold_applied: args.thresholdApplied,
       },
       decision: { product: args.product, price: args.unitPriceMajor, reason: args.reason },
       action: { ucp_session_id: session.id, status: "Complete" },
@@ -591,7 +605,8 @@ export class VouchService {
         },
         physical,
       },
-      confidence: confidenceLevel(args.confidence),
+      confidence:
+        args.confidenceBand ?? (args.confidenceScore === null ? "low" : confidenceLevel(args.confidenceScore)),
       user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
       dispute: null,
     };

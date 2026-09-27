@@ -72,6 +72,18 @@ export const Vouch = z.object({
     mandate_id: z.string(),
     within_bounds: z.boolean(),
     triggered_rules: z.array(z.string()).default([]),
+    /**
+     * The two numbers the gate actually compared: the confidence the proposal
+     * carried, and the mandate's threshold at that moment. Without them a
+     * record could read "confidence high" and "not confident enough" at once
+     * — 0.86 is in the high band and still under a tightened 0.88 — and the
+     * household had no way to see which was true. The band in `confidence`
+     * below is kept for display; these are the evidence.
+     *
+     * Null on records written before 2026-09-28, which did not keep them.
+     */
+    confidence_score: z.number().min(0).max(1).nullable().default(null),
+    threshold_applied: z.number().min(0).max(1).nullable().default(null),
   }),
   decision: z.object({
     product: z.string(),

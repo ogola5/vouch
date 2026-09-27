@@ -387,7 +387,10 @@ Each item follows CLAUDE.md §7: one item at a time, typecheck + tests green, a 
 without it, the four-heading write-up, then stop. Items touching more than one package carry their
 reason / risk / mitigation here, before code (CLAUDE.md §3).
 
-**W1 — Raw confidence on every Vouch (½ day).** Store the confidence number and the threshold it
+**W1 — DONE 2026-09-27.** `authority.confidence_score` + `authority.threshold_applied` on every
+Vouch; the console reads "agent confidence 0.86 < your bar 0.88". Also fixed a record bug found on
+the way: approving a held purchase rewrote the agent's confidence as 1 ("high"); it now keeps the
+agent's own number. **Original spec — Raw confidence on every Vouch (½ day).** Store the confidence number and the threshold it
 was compared against, so a card reads "0.86 vs your 0.88" instead of the contradictory "confidence
 high / not confident enough" the owner hit. Existing rows stay readable (both fields nullable).
 *Done when:* a held-for-confidence Vouch shows both numbers; a pre-existing Vouch still loads.
@@ -679,8 +682,8 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
       Nova 2 Lite).** "Keep detergent stocked" produced `create_mandate → search_catalog →
       propose_purchase` in one turn. Inside the gate, so harmless, but it merges demo steps 1 and 2.
       A prompt line ("setting a mandate is not a request to buy now") would likely fix it.
-    - **A Vouch can read "confidence high" and "agent not confident enough" at once (noticed
-      2026-09-27, owner's first full tour).** The record stores only the band (`high` is ≥ 0.85),
+    - **~~A Vouch can read "confidence high" and "agent not confident enough" at once~~ — DONE as
+      §3b W1. (noticed 2026-09-27, owner's first full tour).** The record stores only the band (`high` is ≥ 0.85),
       not the number, so the replayed 0.86 purchase held against a 0.88 threshold is labelled
       high. The gate compared the right numbers; the record just cannot show them. Fix: store the
       raw confidence and the threshold it was compared against on the Vouch — a schema change

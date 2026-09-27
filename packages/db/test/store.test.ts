@@ -1,5 +1,9 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { newMandate } from "@vouch/shared";
 import type { Vouch } from "@vouch/shared";
@@ -30,7 +34,13 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     vouch_id: vouchId,
     created_at: new Date().toISOString(),
     intent: "Keep laundry detergent stocked",
-    authority: { mandate_id: "m_detergent", within_bounds: true, triggered_rules: [] },
+    authority: {
+      mandate_id: "m_detergent",
+      within_bounds: true,
+      triggered_rules: [],
+      confidence_score: 0.92,
+      threshold_applied: 0.85,
+    },
     decision: { product: "Brand A Detergent", price: 12.49, reason: ["price_drop"] },
     action: { ucp_session_id: "sess_1", status: "Complete" },
     evidence: {
@@ -47,6 +57,33 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     dispute: null,
   });
 }
+
+describe("records written before the gate's numbers were kept", () => {
+  it("still load, with the missing numbers as null rather than a guess", () => {
+    // A Vouch is stored as a JSON document, so this is the whole migration
+    // story: an old row must parse, and must not pretend to know what the
+    // gate compared when it was never written down.
+    const path = join(mkdtempSync(join(tmpdir(), "vouch-")), "legacy.db");
+    const store = VouchStore.open(path);
+    seedMandate(store);
+    const saved = seedVouch(store);
+    store.close();
+
+    const legacy = structuredClone(saved) as Record<string, any>;
+    delete legacy.authority.confidence_score;
+    delete legacy.authority.threshold_applied;
+    const raw = new DatabaseSync(path);
+    raw.prepare("UPDATE vouches SET doc = ? WHERE vouch_id = ?").run(JSON.stringify(legacy), saved.vouch_id);
+    raw.close();
+
+    const reopened = VouchStore.open(path);
+    const loaded = reopened.getVouch(saved.vouch_id);
+    assert.equal(loaded?.authority.confidence_score, null);
+    assert.equal(loaded?.authority.threshold_applied, null);
+    assert.equal(loaded?.decision.price, 12.49);
+    reopened.close();
+  });
+});
 
 describe("round-tripping", () => {
   it("returns a mandate through the Zod schema, not as a raw row", () => {

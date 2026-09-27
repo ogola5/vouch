@@ -136,6 +136,68 @@ describe("create_mandate refuses a rule the gate cannot read", () => {
   });
 });
 
+describe("a Vouch records the two numbers the gate compared", () => {
+  // The owner's first full tour produced a card reading "confidence high"
+  // and "agent not confident enough" at once: 0.86 is in the high band and
+  // still under a tightened 0.88. Both were true; the record could not say so.
+  it("keeps the agent's confidence and the threshold it was held against", async () => {
+    const r = rig();
+    detergentMandate(r.service, 0.88);
+    const result = await r.service.proposePurchase({
+      mandate_id: "m_detergent",
+      product_id: "detergent-brand-a",
+      quantity: 1,
+      brand: "Brand A",
+      confidence: 0.86,
+      reason: ["price_drop"],
+    });
+
+    assert.equal(result.outcome, "held_for_approval");
+    assert.deepEqual(result.vouch.authority.triggered_rules, ["below_confidence_threshold"]);
+    assert.equal(result.vouch.authority.confidence_score, 0.86);
+    assert.equal(result.vouch.authority.threshold_applied, 0.88);
+  });
+
+  it("keeps them on a completed purchase too", async () => {
+    const r = rig();
+    detergentMandate(r.service);
+    const result = await r.service.proposePurchase({
+      mandate_id: "m_detergent",
+      product_id: "detergent-brand-a",
+      quantity: 1,
+      brand: "Brand A",
+      confidence: 0.93,
+      reason: ["price_drop"],
+    });
+    assert.equal(result.outcome, "completed");
+    assert.equal(result.vouch.authority.confidence_score, 0.93);
+    assert.equal(result.vouch.authority.threshold_applied, 0.85);
+  });
+
+  it("does not rewrite the agent's confidence when the household approves", async () => {
+    // Approval used to write a synthetic confidence of 1, so an approved
+    // purchase the agent was only 70% sure of read "confidence high". The
+    // household's yes does not make the agent retroactively confident.
+    const r = rig();
+    detergentMandate(r.service);
+    const held = await r.service.proposePurchase({
+      mandate_id: "m_detergent",
+      product_id: "detergent-brand-c",
+      quantity: 1,
+      brand: "Brand C",
+      confidence: 0.7,
+      reason: ["largest_size"],
+    });
+    const approved = await r.service.approvePurchase(held.vouch.vouch_id);
+
+    assert.equal(approved.outcome, "completed");
+    assert.equal(approved.vouch.authority.confidence_score, 0.7);
+    assert.equal(approved.vouch.authority.threshold_applied, 0.85);
+    assert.equal(approved.vouch.confidence, "medium");
+    assert.ok(approved.vouch.decision.reason.includes("approved_by_household"));
+  });
+});
+
 describe("propose_purchase — an out-of-bounds proposal never reaches Complete", () => {
   let r: Rig;
   beforeEach(() => {
