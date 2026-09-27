@@ -207,6 +207,14 @@
                 border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
   .record-bad ul { margin: 6px 0 0; padding-left: 18px; }
   .record-ok code, .record-bad code { font-size: 11.5px; }
+  .study { margin: 0 0 12px; padding: 14px 16px; border-radius: 12px; border: 1.5px dashed var(--info);
+           background: var(--info-bg); font-size: 14px; }
+  .study h4 { margin: 0 0 6px; font-size: 15px; }
+  .study .scale { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .study .scale button { min-width: 44px; }
+  .study textarea { width: 100%; min-height: 64px; font: inherit; font-size: 14px; padding: 8px 10px;
+                    border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .study input[type="number"], .study input[type="text"] { max-width: 180px; }
   details.decided { margin-top: 8px; font-size: 13px; }
   details.decided > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 12.5px; }
   details.decided ul { list-style: none; margin: 4px 0 8px; padding: 0; }
@@ -384,8 +392,10 @@
         <h3 id="tourTitle">The whole idea in seven steps</h3>
       </div>
       <div class="progress" aria-hidden="true"><div id="tourBar"></div></div>
-      <span class="meta" id="tourProgress">0 of 5</span>
+      <span class="meta" id="tourProgress">0 of 7</span>
+      <button class="small ghost" id="studyStart" title="For trying Vouch with real people: three short questions, answers kept on this computer">Run a study session</button>
     </div>
+    <div class="study" id="studyCard" hidden></div>
     <div class="beats" id="beats" role="tablist"></div>
     <div class="beat-detail" id="beatDetail"></div>
   </section>
@@ -529,6 +539,12 @@
 
     <div class="subhead">The store — change a price and the agent has to react to a number it didn't choose</div>
     <div class="grid" id="catalog"><div class="empty">loading…</div></div>
+
+    <div class="subhead">Study results — what real people said</div>
+    <div id="studySummary" class="meta"></div>
+    <div class="actions" style="margin-top:6px">
+      <button class="small" id="studyExport">Export answers (CSV)</button>
+    </div>
 
     <div class="subhead">Simulate failures — Vouch should fail closed and say so</div>
     <p class="hint" style="margin-top:0">
@@ -880,6 +896,7 @@ function renderTour() {
         <p>${b.diff}</p>
       </div>
     </div>`;
+  renderStudy();
   $("beatDetail").querySelectorAll("[data-act]").forEach((btn) =>
     btn.addEventListener("click", async () => {
       btn.disabled = true;
@@ -890,6 +907,134 @@ function renderTour() {
 }
 
 function markWhy() { askedWhy = true; setFlag("vouch.askedWhy"); }
+
+/* ---------- study mode (W5c) ---------- */
+
+/*
+ * A session runs alongside the tour and asks each question at its moment:
+ * trust before anything is shown; "why did it stop?" right after step 4;
+ * trust again, and the cost ratio, after step 6. Consent first, a code
+ * instead of a name, answers kept on this computer. The server validates
+ * every answer (packages/mcp-server/src/study.ts).
+ */
+const STUDY_KEY = "vouch.study";
+let study = loadStudy();
+
+function loadStudy() {
+  try { return JSON.parse(sessionStorage.getItem(STUDY_KEY) ?? "null"); } catch { return null; }
+}
+function saveStudy() {
+  try { sessionStorage.setItem(STUDY_KEY, JSON.stringify(study)); } catch { /* private mode: the session lives in memory */ }
+}
+
+const scaleButtons = (key) =>
+  `<div class="scale">${[1, 2, 3, 4, 5].map((n) => `<button class="small" data-study-scale="${key}" data-v="${n}">${n}</button>`).join("")}
+   <span class="meta" style="align-self:center">1 = no, never · 5 = yes, definitely</span></div>`;
+
+function renderStudy() {
+  const card = $("studyCard");
+  $("studyStart").hidden = Boolean(study);
+  if (!study) { card.hidden = true; return; }
+  card.hidden = false;
+
+  // Advance on its own when the tour reaches the moment for the next question.
+  if (study.stage === "tour" && BEATS[3].done() && !study.comprehension) study.stage = "comprehension";
+  if (study.stage === "waiting" && BEATS[5].done()) study.stage = "after";
+  saveStudy();
+
+  const cancel = `<button class="small ghost" data-study-cancel>Stop the session</button>`;
+  const head = `<h4>Study session <code>${esc(study.participant)}</code></h4>`;
+  if (study.stage === "consent") {
+    card.innerHTML = `${head}
+      <p>Thank you for trying this. It takes about ten minutes: you'll go through the seven steps above, and I'll ask three short questions along the way.</p>
+      <p class="meta">Your answers are saved <b>on this computer only</b>, under a code instead of your name. Nothing is sent anywhere. You can stop at any time.</p>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="studyConsent" style="width:auto"> I'm happy to take part</label>
+      <div class="actions"><button class="small primary" data-study-go>Start</button> ${cancel}</div>`;
+  } else if (study.stage === "before") {
+    card.innerHTML = `${head}<p><b>Before you start:</b> imagine an assistant that could restock your household basics for you. Would you leave it switched on?</p>${scaleButtons("trust_before")} <div class="actions">${cancel}</div>`;
+  } else if (study.stage === "tour" || study.stage === "waiting") {
+    card.innerHTML = `${head}<p class="meta">Go through the steps above at your own pace${study.stage === "waiting" ? " — next, step 6: tell it you didn't want something" : ""}. I'll ask when it's time.</p><div class="actions">${cancel}</div>`;
+  } else if (study.stage === "comprehension") {
+    card.innerHTML = `${head}<p><b>In your own words:</b> why didn't it buy the Brand C detergent?</p>
+      <textarea id="studyWhy" maxlength="1000" placeholder="Anything you'd say to a friend"></textarea>
+      <div class="actions"><button class="small primary" data-study-why>Next</button> ${cancel}</div>`;
+  } else if (study.stage === "after") {
+    card.innerHTML = `${head}<p><b>Now that you've seen how it works:</b> would you leave it switched on?</p>${scaleButtons("trust_after")}
+      <p style="margin-top:12px"><b>To avoid one unwanted $28 purchase</b>, how many times would you be happy to be asked “may I buy this?” first?</p>
+      <input type="number" id="studyRatio" min="0" max="1000" step="1" placeholder="e.g. 3">
+      <p style="margin-top:12px">Anything confusing or surprising? <span class="meta">(optional)</span></p>
+      <textarea id="studyComment" maxlength="1000"></textarea>
+      <div class="actions"><button class="small primary" data-study-save>Save my answers</button> ${cancel}</div>
+      <div class="meta" id="studyAfterPicked">${study.trust_after ? `You chose ${study.trust_after}.` : ""}</div>`;
+  } else if (study.stage === "done") {
+    card.innerHTML = `${head}<p><b>Saved — thank you.</b> Your answers are on this computer under <code>${esc(study.participant)}</code>.</p>
+      <div class="actions"><button class="small" data-study-close>Close</button></div>`;
+  }
+
+  card.querySelectorAll("[data-study-cancel]").forEach((b) => b.addEventListener("click", () => {
+    study = null; saveStudy(); renderStudy();
+  }));
+  card.querySelector("[data-study-go]")?.addEventListener("click", () => {
+    if (!document.getElementById("studyConsent")?.checked) { toast("Tick the box to take part — or stop the session.", true); return; }
+    study.consent = true; study.stage = "before"; renderStudy();
+  });
+  card.querySelectorAll("[data-study-scale]").forEach((b) => b.addEventListener("click", () => {
+    study[b.dataset.studyScale] = Number(b.dataset.v);
+    if (b.dataset.studyScale === "trust_before") study.stage = "tour";
+    renderStudy();
+  }));
+  card.querySelector("[data-study-why]")?.addEventListener("click", () => {
+    const text = document.getElementById("studyWhy").value.trim();
+    if (!text) { toast("A few words is enough.", true); return; }
+    study.comprehension = text; study.stage = BEATS[5].done() ? "after" : "waiting"; renderStudy();
+  });
+  card.querySelector("[data-study-save]")?.addEventListener("click", async () => {
+    try {
+      await household("study", {
+        method: "POST",
+        body: JSON.stringify({
+          consent: study.consent, participant: study.participant, trust_before: study.trust_before,
+          trust_after: study.trust_after, comprehension: study.comprehension,
+          cost_ratio: Number(document.getElementById("studyRatio").value),
+          comment: document.getElementById("studyComment").value, used_chat: Boolean(study.usedChat),
+        }),
+      });
+      study.stage = "done"; renderStudy(); loadStudySummary();
+    } catch (e) { toast(e.message, true); }
+  });
+  card.querySelector("[data-study-close]")?.addEventListener("click", () => { study = null; saveStudy(); renderStudy(); });
+}
+
+$("studyStart").addEventListener("click", () => {
+  study = { participant: `P-${Math.random().toString(16).slice(2, 6).toUpperCase()}`, stage: "consent" };
+  saveStudy(); renderStudy();
+  document.getElementById("studyCard")?.scrollIntoView({ block: "center" });
+});
+
+async function loadStudySummary() {
+  let r;
+  try { r = await api("/api/household/study"); } catch { $("studySummary").textContent = ""; return; }
+  const s = r.summary;
+  $("studySummary").innerHTML = s.n === 0
+    ? "No sessions yet. Use “Run a study session” at the top of the tour."
+    : `${s.n} session${s.n === 1 ? "" : "s"} · trust (median, 1–5) <b>${s.median_trust_before} → ${s.median_trust_after}</b> (up for ${s.trust_went_up}, down for ${s.trust_went_down}) ·
+       would accept a median of <b>${s.median_cost_ratio}</b> questions to avoid one unwanted purchase (${s.above_break_even} of ${s.n} at or above the simulation's break-even of ~${s.break_even}) ·
+       ${s.named_a_real_reason} of ${s.n} named a real reason why it stopped <span title="auto-flagged by keywords — check the answers by hand">(auto-flagged)</span>`;
+}
+
+$("studyExport").addEventListener("click", async () => {
+  try {
+    const { responses } = await api("/api/household/study");
+    if (!responses.length) { toast("No sessions to export yet.", true); return; }
+    const cols = ["participant", "created_at", "trust_before", "trust_after", "cost_ratio", "named_a_real_reason", "used_chat", "comprehension", "comment"];
+    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [cols.join(","), ...responses.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `vouch-study-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { toast(e.message, true); }
+});
 
 async function setPrice(id, price) {
   await api("/api/price", {
@@ -1525,6 +1670,7 @@ let chatBusy = false;
 
 async function say(message) {
   if (chatBusy || !message.trim()) return;
+  if (study) { study.usedChat = true; saveStudy(); }
   // No client-side "is the model ready" gate. The server is the authority on
   // that and answers 503 with a readable reason, which lands in the
   // transcript. A gate here once trusted a health check that ran before the
@@ -2048,6 +2194,7 @@ async function refresh() {
     renderCatalog(); renderMandates(); renderSelectors(); renderPending(); renderVouches(); renderTour();
     await loadRecord();
     await loadFailures();
+    await loadStudySummary();
   } catch (e) {
     $("dot").className = "dot down";
     $("statusText").textContent = "reconnecting…";

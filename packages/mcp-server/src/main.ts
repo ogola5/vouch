@@ -10,6 +10,7 @@ import { HttpMerchantClient } from "./merchantClient.ts";
 import { VouchService } from "./service.ts";
 import { HouseholdAgent } from "./householdAgent.ts";
 import { PasskeyGuard } from "./passkey.ts";
+import { Study } from "./study.ts";
 import { startVouchHttpServer } from "./server.ts";
 
 /**
@@ -126,6 +127,7 @@ const { url, householdUrl } = await startVouchHttpServer(port, {
   householdPort: Number(process.env.HOUSEHOLD_PORT ?? 4021),
   householdAgent,
   passkeys,
+  study: new Study(store),
 });
 
 console.log(`[mcp-server] Streamable HTTP  ${url}/mcp   (bound ${host})`);

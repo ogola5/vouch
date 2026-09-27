@@ -519,6 +519,15 @@ export class VouchStore {
       .run(key, value);
   }
 
+  saveStudyResponse(id: string, createdAt: string, doc: object): void {
+    this.db.prepare(`INSERT INTO study_responses (id, created_at, doc) VALUES (?, ?, ?)`).run(id, createdAt, JSON.stringify(doc));
+  }
+
+  listStudyResponses(): unknown[] {
+    const rows = this.db.prepare(`SELECT doc FROM study_responses ORDER BY created_at ASC`).all() as { doc: string }[];
+    return rows.map((r) => JSON.parse(r.doc) as unknown);
+  }
+
   savePasskey(credentialId: string, doc: object): void {
     this.db
       .prepare(

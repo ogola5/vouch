@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VouchService } from "./service.ts";
 import type { HouseholdAgent, NoticeResponse } from "./householdAgent.ts";
 import type { Autonomy, Mandate } from "@vouch/shared";
+import type { Study } from "./study.ts";
 import {
   PasskeyError,
   PasskeyRequired,
@@ -120,7 +121,8 @@ export async function handleHouseholdRequest(
   service: VouchService,
   pathname: string,
   agent?: HouseholdAgent,
-  guard?: PasskeyGuard
+  guard?: PasskeyGuard,
+  study?: Study
 ): Promise<boolean> {
   const method = req.method ?? "GET";
 
@@ -131,6 +133,16 @@ export async function handleHouseholdRequest(
     guard ? guard.require(action, description, proofFrom(body)) : null;
 
   try {
+    /* ---- study mode (W5c): the household's data; no agent tool touches it ---- */
+    if (study && pathname === "/household/study" && method === "POST") {
+      send(res, 200, study.save(await readJson(req)));
+      return true;
+    }
+    if (study && pathname === "/household/study" && method === "GET") {
+      send(res, 200, study.list());
+      return true;
+    }
+
     /* ---- passkeys ---- */
     if (guard && pathname === "/household/passkey" && method === "GET") {
       send(res, 200, { registered: guard.isRegistered(), rp_id: guard.rpId, origins: guard.origins });

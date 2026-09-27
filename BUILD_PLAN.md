@@ -657,6 +657,34 @@ Every step works without a model through the same gate. Verified by walking all 
 real stack via HTTP, checking each step's own done condition: 7/7. `npm run dev:stop` and
 `npm run dev:fresh` added (CLAUDE.md commands updated). Remaining in W5: **W5c** study mode.
 
+**W5c DONE 2026-09-28 — study mode.** A "Run a study session" button on the tour opens a card
+that works through these stages:
+- consent, with the wording "on this computer only, a code instead of your name, nothing sent,
+  stop at any time";
+- trust before (1–5);
+- the tour itself;
+- after step 4, "why didn't it buy Brand C?" in the person's own words;
+- after step 6, trust after, the cost ratio ("how many 'may I buy this?' questions to avoid one
+  unwanted $28 purchase?") and an optional comment;
+- save.
+
+Storage: the `study_responses` table in the local DB. The page calls `POST/GET /household/study`,
+which is on the loopback household surface, not the MCP port. Every field is validated on the
+server (`packages/mcp-server/src/study.ts`).
+
+Demo controls show a summary:
+- n;
+- median trust before → after;
+- how many people's trust went up or down;
+- the median cost ratio, and how many people were at or above the simulation's ~4.1 break-even;
+- how many named a real reason. This is an auto-flag and must be read by hand.
+
+A CSV export (a client-side Blob) is there for the write-up. No scores are invented; with no
+sessions it says so. Also recorded: whether the person used the chat.
+
+Limits: the "real reason" flag is keyword matching, and the session state lives in
+sessionStorage, so it survives a reload of that tab only.
+
 **W5 — Demo completeness (1½ days):**
 - **Dispute by speaking:** "I didn't want that" in the chat calls `record_dispute` and the mandate
   visibly tightens; the tour uses it.

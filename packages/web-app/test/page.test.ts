@@ -229,6 +229,27 @@ describe("the console page holds together", () => {
     assert.match(scriptBody(), /Nobody asked — your household agent did this on its own/);
   });
 
+  it("runs a study session with consent first, a code not a name, and each question at its moment", () => {
+    const code = withoutComments(scriptBody());
+    const render = /function renderStudy\(\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    // Consent is its own stage, and the wording says where answers go.
+    assert.match(render, /study\.stage === "consent"/);
+    assert.match(render, /on this computer only/);
+    assert.match(render, /code instead of your name/);
+    assert.match(render, /Nothing is sent anywhere/);
+    assert.match(render, /stop at any time/);
+    // The participant gets a generated code; nothing on the page asks for a name.
+    assert.match(code, /participant: `P-\$\{/);
+    assert.ok(!/your name\s*<\/label>|placeholder="Name/i.test(render), "the study must never ask for a name");
+    // Questions arrive with the tour: after step 4 (the held purchase) and step 6 (the dispute).
+    assert.match(render, /BEATS\[3\]\.done\(\)/);
+    assert.match(render, /BEATS\[5\]\.done\(\)/);
+    assert.match(code, /household\("study"/);
+    // Results can be exported for the write-up.
+    assert.match(html, /id="studyExport"/);
+    assert.match(code, /text\/csv/);
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);

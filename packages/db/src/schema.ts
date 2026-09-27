@@ -121,6 +121,16 @@ CREATE TABLE IF NOT EXISTS ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_vouch ON ledger (vouch_id, seq);
 
+/*
+ * Study sessions (BUILD_PLAN.md §3b W5c/W7): what real people answered while
+ * trying the product. A code, never a name; kept on this computer only.
+ */
+CREATE TABLE IF NOT EXISTS study_responses (
+  id          TEXT PRIMARY KEY,
+  created_at  TEXT NOT NULL,
+  doc         TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS passkeys (
   credential_id  TEXT PRIMARY KEY,
   doc            TEXT NOT NULL
