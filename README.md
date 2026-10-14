@@ -48,7 +48,7 @@ is the clearest statement of what this project actually is.
 | Explanations inside a purchase result, and every confidence-threshold change | Deterministic on purpose (`RuleBasedReasoningProvider`): the number that moves the agent's authority must be reproducible, and a purchase must never wait on a model or depend on one being up |
 | Alexa+ | Simulated via a web chat app (per track guidance — no real Alexa+ production access needed) |
 | Alexa+ as a *real add-on* (MCP Toolkit) | **Blocked, not skipped.** The Alexa AI CLI sits behind a private AWS CodeArtifact registry gated on Solutions Architect onboarding, and Alexa+ has no African marketplace. Attempted and recorded in `BUILD_PLAN.md` §7; the track explicitly permits simulating via a web app |
-| Fire TV dashboard | **Not built.** Planned as a TV-layout web view of the household (`BUILD_PLAN.md` §3b, W8), labelled as such — not a native Fire TV app. *(This row previously claimed a real React Native app; that was never true, corrected 2026-09-28.)* |
+| TV view (Fire TV track) | **A TV-layout web page, not a native Fire TV app**, and it says so on screen. The console's TV view shows, in large type: what's waiting for you, what's running low, what it did lately, and how far each item is handed over. It is drawn from the same state as Home. Arrow keys move between tiles (a remote's D-pad sends the same keys), Enter opens one, and Esc goes home. *(This row once claimed a React Native app; that was never true, corrected 2026-09-28.)* |
 
 ## Repo layout
 

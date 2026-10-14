@@ -6,13 +6,13 @@
 <title>Vouch Console</title>
 <style>
   :root {
-    --bg: #f4f2ee;
+    --bg: #f5f3ef;
     --panel: #ffffff;
-    --sunk: #faf9f6;
-    --ink: #1b1a17;
-    --muted: #6b6760;
-    --faint: #9a958c;
-    --line: #e4e0d8;
+    --sunk: #f9f8f5;
+    --ink: #191815;
+    --muted: #66625b;
+    --faint: #8f8a81;
+    --line: #e6e2da;
     --accent: #1f5c4d;
     --accent-2: #2e7d69;
     --accent-ink: #ffffff;
@@ -25,8 +25,9 @@
     --bad-bg: #fbe6e4;
     --info: #3a5a8c;
     --info-bg: #e7eef9;
-    --radius: 14px;
-    --shadow: 0 1px 2px rgba(30, 25, 15, .05), 0 4px 16px rgba(30, 25, 15, .05);
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(30, 25, 15, .04), 0 8px 24px rgba(30, 25, 15, .06);
+    --shadow-lift: 0 2px 4px rgba(30, 25, 15, .06), 0 14px 32px rgba(30, 25, 15, .10);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -52,31 +53,139 @@
     font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 80px; }
   code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
   [hidden] { display: none !important; }
+  a { color: var(--accent); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  :focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
 
-  /* ---------- top bar ---------- */
-  .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 0 8px; }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand svg { width: 30px; height: 30px; }
-  .brand h1 { font-size: 20px; margin: 0; letter-spacing: -0.02em; font-weight: 700; }
-  .brand h1 span { font-weight: 500; color: var(--muted); }
-  .pills { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  /* ---------- the shell ---------- */
+  .app { max-width: 1320px; margin: 0 auto; padding: 0 16px 48px; }
+  .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px;
+            flex-wrap: wrap; padding: 12px 0; background: color-mix(in srgb, var(--bg) 88%, transparent);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--ink); }
+  .brand svg { width: 28px; height: 28px; }
+  .brand-name { font-size: 19px; font-weight: 750; letter-spacing: -0.02em; }
+  .tabs { display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--sunk);
+          border: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .tabs a { text-decoration: none; color: var(--muted); font-size: 14px; font-weight: 550; white-space: nowrap;
+            padding: 6px 13px; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; }
+  .tabs a:hover { color: var(--ink); }
+  .tabs a.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .tab-count { font-size: 11px; font-weight: 700; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+               display: inline-grid; place-items: center; background: var(--hold); color: var(--panel); }
+  .top-right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted);
           background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; }
+  .pill:empty, .pk:empty { display: none; }
+  .pk { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .pk button { font-size: 12.5px; padding: 4px 11px; border-radius: 999px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
   .dot.up { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
   .dot.down { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-bg); }
+  #presenterToggle[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
-  /* ---------- hero ---------- */
-  .hero { padding: 18px 0 20px; }
-  .hero h2 { font-size: clamp(22px, 3.2vw, 32px); line-height: 1.15; margin: 0 0 8px;
-             letter-spacing: -0.025em; font-weight: 700; max-width: 26ch; }
-  .hero p { margin: 0; color: var(--muted); max-width: 68ch; font-size: 15.5px; }
-  .pillars { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  .pillar { font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
-            background: var(--accent-bg); color: var(--accent); }
+  /* Presenter mode holds the demo machinery; the product reads as a product without it. */
+  body:not(.presenter) .presenter-only, body:not(.presenter) .demo-only { display: none !important; }
+
+  .shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 20px; }
+  .view { display: none; animation: rise .2s ease; }
+  .view.on { display: block; }
+  .talk { display: none; }
+  .talk.on { display: flex; }
+  .tab-talk { }
+  @media (min-width: 1100px) {
+    .shell { grid-template-columns: minmax(0, 1fr) 380px; }
+    .talk { display: flex !important; position: sticky; top: 76px; max-height: calc(100vh - 92px); }
+    .tab-talk { display: none !important; }
+    body[data-view="tv"] .shell { grid-template-columns: minmax(0, 1fr); }
+    body[data-view="tv"] .talk { display: none !important; }
+  }
+  .talk > .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--panel);
+                  border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+  .talk .transcript { flex: 1; max-height: none; }
+
+  h1, h2 { letter-spacing: -0.025em; line-height: 1.15; }
+  .view-head { margin: 4px 0 18px; }
+  .view-head h1, .home-head h1 { font-size: clamp(24px, 3vw, 34px); margin: 2px 0 6px; font-weight: 750; }
+  .lede { margin: 0; color: var(--muted); max-width: 64ch; font-size: 15.5px; }
+  .view-head .badge { margin-top: 10px; }
+
+  /* ---------- home ---------- */
+  .home-head { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin: 4px 0 18px; }
+  .home-head > div:first-child { flex: 1; min-width: 260px; }
+  .story { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+           padding: 14px 18px; margin-bottom: 18px; box-shadow: var(--shadow); }
+  .story > summary { cursor: pointer; font-weight: 650; font-size: 14px; color: var(--muted); list-style: none; }
+  .story > summary::-webkit-details-marker { display: none; }
+  .story > summary::before { content: "▸ "; }
+  .story[open] > summary::before { content: "▾ "; }
+  .story-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px;
+                 grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); counter-reset: s; }
+  .story-steps li { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: start; }
+  .story-steps b { font-size: 14.5px; }
+  .story-steps span:last-child { grid-column: 2; font-size: 13px; color: var(--muted); }
+  .story-n { grid-row: span 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+             background: var(--accent-bg); color: var(--accent); font-weight: 750; font-size: 13px; }
+  .story-foot { display: flex; gap: 8px; margin-top: 14px; }
+  .block { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+           padding: 20px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .block-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .block-head h2 { font-size: 19px; margin: 0; font-weight: 700; }
+  .chat h3, .dock h3 { font-size: 15.5px; margin: 0; letter-spacing: -0.01em; }
+  .view .vouch, .view .mandate { background: var(--panel); box-shadow: var(--shadow); }
+  .view .vouch { margin-bottom: 12px; }
+  #replayBody, #catalog { margin-top: 14px; }
+  .jump { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .jump-card { display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: var(--ink);
+               background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px;
+               transition: box-shadow .15s, border-color .15s, transform .15s; }
+  .jump-card:hover { border-color: var(--accent); box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+  .jump-card b::after { content: " →"; color: var(--accent); }
+  .jump-card span { font-size: 13px; color: var(--muted); }
+
+  /* ---------- the TV view (W8): dark, large, D-pad friendly ---------- */
+  .tv { --tv-bg: #0f1113; --tv-panel: #1a1d21; --tv-ink: #f2f1ec; --tv-muted: #a9a59c; --tv-line: #2c3036;
+        background: var(--tv-bg); color: var(--tv-ink); border-radius: 20px; padding: clamp(20px, 3vw, 44px);
+        min-height: 70vh; font-size: clamp(16px, 1.5vw, 22px); }
+  .tv-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 1.4em; }
+  .tv-date { color: var(--tv-muted); font-size: 1em; }
+  .tv-hello { font-size: 2.1em; font-weight: 750; letter-spacing: -0.02em; line-height: 1.1; }
+  .tv-note { color: var(--tv-muted); font-size: .75em; }
+  .tv-grid { display: grid; gap: 1.4em; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tv h2 { font-size: 1.05em; color: var(--tv-muted); font-weight: 650; margin: 0 0 .6em; letter-spacing: 0; }
+  .tv section { display: flex; flex-direction: column; gap: .7em; }
+  .tv-tile { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: .25em;
+             background: var(--tv-panel); border: 2px solid var(--tv-line); border-radius: 16px; padding: .9em 1.1em;
+             transition: transform .12s, border-color .12s, box-shadow .12s; }
+  .tv-tile:focus, .tv-tile:hover { border-color: #f2f1ec; transform: scale(1.03); box-shadow: 0 0 0 4px rgba(242,241,236,.18); outline: none; }
+  .tv-tile.hold { border-color: #e8b464; }
+  .tv-tile.ask { border-color: #6cc0a5; }
+  .tv-tile.bad { border-color: #eb8f8f; }
+  .tv-big { font-size: 1.35em; font-weight: 700; line-height: 1.2; }
+  .tv-sub { color: var(--tv-muted); }
+  .tv-tag { font-size: .8em; font-weight: 650; color: var(--tv-ink); }
+  .tv-tile.hold .tv-tag { color: #e8b464; } .tv-tile.ok .tv-tag { color: #7fcaa4; } .tv-tile.bad .tv-tag { color: #eb8f8f; }
+  .tv-calm, .tv-empty { color: var(--tv-muted); font-size: 1.1em; padding: .6em 0; }
+  .tv-empty { font-size: 1.8em; text-align: center; padding: 2em 0; }
+  .tv-empty span { font-size: .6em; }
+  .tv-trust { margin-top: 1.6em; }
+  .tv-trust-row { display: grid; gap: .7em; grid-template-columns: repeat(auto-fit, minmax(10em, 1fr)); }
+  .tv-trust-item { background: var(--tv-panel); border-radius: 14px; padding: .7em 1em; display: grid; gap: .3em; }
+  .tv-bars { display: flex; gap: 5px; }
+  .tv-bars i { flex: 1; height: 8px; border-radius: 4px; background: var(--tv-line); }
+  .tv-bars i.on { background: #6cc0a5; }
+  .tv-trust-mode { color: var(--tv-muted); font-size: .85em; }
+  @media (max-width: 860px) { .tv-grid { grid-template-columns: 1fr; } }
+
+  .foot { margin-top: 32px; }
+  .honesty-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; }
+  .honesty-wrap > summary { cursor: pointer; font-weight: 650; font-size: 14px; }
+  label.check { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; }
+  label.check input { width: auto; }
+  label.inline { display: inline; margin: 0 0 0 8px; }
+  .form { margin-top: 12px; }
 
   /* ---------- panels ---------- */
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -89,8 +198,11 @@
   .empty { color: var(--muted); font-size: 14px; padding: 14px; text-align: center;
            border: 1px dashed var(--line); border-radius: 10px; }
 
-  /* ---------- the tour ---------- */
-  .tour { margin-bottom: 18px; }
+  /* ---------- the tour (presenter dock) ---------- */
+  .dock { margin-top: 14px; background: var(--panel); border: 1.5px solid var(--accent); border-radius: var(--radius);
+          padding: 16px 18px; box-shadow: var(--shadow); }
+  .dock.folded .tour-body, .dock.folded .study { display: none; }
+  .dock.folded .tour-head { margin-bottom: 0; }
   .tour-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
   .progress { flex: 1; min-width: 120px; max-width: 260px; height: 6px; background: var(--sunk);
               border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
@@ -118,9 +230,6 @@
   .beat-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
   .fine { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
-  /* ---------- layout ---------- */
-  .main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 16px; align-items: start; }
-  .sticky { position: sticky; top: 12px; }
 
   /* ---------- controls ---------- */
   label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
@@ -320,11 +429,6 @@
   .ring-note { font-size: 12.5px; color: var(--muted); margin-top: 12px; }
 
   /* ---------- demo controls ---------- */
-  details.controls { margin-top: 16px; }
-  details.controls > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
-  details.controls > summary::-webkit-details-marker { display: none; }
-  details.controls > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
-  details.controls[open] > summary::before { transform: rotate(90deg); }
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
   .card { border: 1px solid var(--line); border-radius: 11px; padding: 13px; background: var(--sunk); }
   .card h5 { font-size: 14px; margin: 0 0 3px; }
@@ -349,8 +453,6 @@
   }
 
   @media (max-width: 980px) {
-    .main { grid-template-columns: 1fr; }
-    .sticky { position: static; }
     .beat-detail { grid-template-columns: 1fr; }
     .honesty { grid-template-columns: 1fr; }
   }
@@ -359,124 +461,146 @@
     .beat-tab { justify-content: center; padding: 8px 4px; }
     .beat-tab .beat-text { display: none; }
     .chain { grid-template-columns: 1fr 1fr; }
-    .pills { margin-left: 0; }
+    .tabs { order: 3; width: 100%; }
+    .top-right { margin-left: auto; }
+    .top-right .pill:not(:last-of-type) { display: none; }
+    .block { padding: 16px; }
   }
 </style>
 </head>
-<body>
-<div class="wrap">
+<body data-view="home">
+<div class="app">
 
-  <header class="top">
-    <div class="brand">
+  <!-- TOP BAR: who you are, where you are, and whether it's connected -->
+  <header class="topbar">
+    <a class="brand" href="#home" aria-label="Vouch home">
       <svg viewBox="0 0 32 32" aria-hidden="true">
         <path d="M16 2.5 4.5 7v8.2c0 7.1 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.2 11.5-14.3V7L16 2.5Z" fill="var(--accent)"/>
         <path d="m10.5 16.2 3.8 3.8 7.4-8" fill="none" stroke="var(--accent-ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <h1>Vouch <span>Console</span></h1>
-    </div>
-    <div class="pills">
+      <span class="brand-name">Vouch</span>
+    </a>
+    <nav class="tabs" aria-label="Views">
+      <a href="#home" data-tab="home">Home</a>
+      <a href="#record" data-tab="record">Record <span class="tab-count" id="tabHeld" hidden></span></a>
+      <a href="#rules" data-tab="rules">Rules</a>
+      <a href="#compare" data-tab="compare">vs Auto Buy</a>
+      <a href="#tv" data-tab="tv">TV</a>
+      <a href="#talk" data-tab="talk" class="tab-talk">Talk</a>
+      <a href="#demo" data-tab="demo" class="presenter-only">Demo</a>
+    </nav>
+    <div class="top-right">
       <span class="pill" id="modelPill" hidden></span>
+      <span class="pk" id="pkStatus"></span>
       <span class="pill"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></span>
+      <button class="small ghost" id="presenterToggle" aria-pressed="false" title="Show the guided tour, study mode and demo controls">Presenter</button>
     </div>
   </header>
 
-  <section class="hero">
-    <h2>Your agent can spend your money. Vouch makes it answer for it.</h2>
-    <p>
-      A real gate before every order, a record you can question, and authority that tightens
-      when the agent gets it wrong. Nothing on this page decides anything: the gate lives in the
-      server, so what you see here is exactly what an agent sees.
-    </p>
-    <div class="pillars">
-      <span class="pillar">Gate before the order</span>
-      <span class="pillar">A record you can question</span>
-      <span class="pillar">Trust that adapts</span>
-    </div>
-  </section>
-
-  <!-- THE TOUR: the demo script, as something you can do rather than read -->
-  <section class="panel tour" aria-labelledby="tourTitle">
+  <!-- PRESENTER DOCK: the tour and study mode — demo machinery, hidden unless asked for -->
+  <section class="dock presenter-only" aria-labelledby="tourTitle">
     <div class="tour-head">
       <div>
-        <div class="eyebrow">Try it yourself</div>
+        <div class="eyebrow">Guided tour</div>
         <h3 id="tourTitle">The whole idea in seven steps</h3>
       </div>
       <div class="progress" aria-hidden="true"><div id="tourBar"></div></div>
       <span class="meta" id="tourProgress">0 of 7</span>
       <button class="small ghost" id="studyStart" title="For trying Vouch with real people: three short questions, answers kept on this computer">Run a study session</button>
+      <button class="small ghost" id="tourHide" title="Fold the tour away">Fold</button>
     </div>
     <div class="study" id="studyCard" hidden></div>
-    <div class="beats" id="beats" role="tablist"></div>
-    <div class="beat-detail" id="beatDetail"></div>
-  </section>
-
-  <!-- THE HOUSEHOLD: what the agent may do for each item, and what needs you -->
-  <section class="panel" id="hhPanel" aria-labelledby="hhTitle" style="margin-bottom:16px">
-    <div class="hh-head">
-      <div>
-        <div class="eyebrow">Your household agent</div>
-        <h3 id="hhTitle">What's running low, and what it may do about it</h3>
-      </div>
-      <div class="hh-controls">
-        <span class="hh-date" id="pkStatus"></span>
-        <span class="hh-date" id="hhDate"></span>
-        <button class="small" id="hhFwd1" title="Demo control: move the household's clock forward">+1 day</button>
-        <button class="small" id="hhFwd7" title="Demo control: move the household's clock forward">+1 week</button>
-        <button class="small primary" id="hhSetup">Load the demo household</button>
-      </div>
+    <div class="tour-body" id="tourBody">
+      <div class="beats" id="beats" role="tablist"></div>
+      <div class="beat-detail" id="beatDetail"></div>
     </div>
-    <p class="hint">
-      Each item is handed over as far as you choose: <b>Remind</b> tells you, <b>Ask</b> suggests an
-      order and waits, <b>Auto</b> buys within your limits and tells you after. It earns more only
-      when you say so, and loses it the moment you dispute something.
-    </p>
-    <div class="needs" id="hhNeeds"></div>
-    <div class="items" id="hhItems"></div>
-    <div class="log" id="hhLog" hidden></div>
   </section>
 
-  <div class="main">
-    <!-- THE CONVERSATION -->
-    <div class="sticky">
-      <section class="panel chat" aria-labelledby="chatTitle">
-        <div class="panel-head">
-          <h3 id="chatTitle">Talk to your agent</h3>
-          <span class="badge info">stands in for Alexa+</span>
-        </div>
-        <p class="hint">
-          Say it in your own words. Every step it takes is shown — watching it check your mandate
-          is the point, not a detail worth hiding.
-        </p>
-        <div id="chatBanner" hidden></div>
-        <div id="transcript" class="transcript">
-          <div class="transcript-empty" id="transcriptEmpty">
-            Nothing said yet. Start with step 1 above, or type below.
+  <div class="shell">
+    <main class="views">
+
+      <!-- HOME: the household first — what's low, what needs you, what it did -->
+      <section class="view" data-view="home" aria-labelledby="homeTitle">
+        <div class="home-head">
+          <div>
+            <div class="eyebrow" id="hhDate"></div>
+            <h1 id="homeTitle">Your home, looked after</h1>
+            <p class="lede">Your agent restocks the everyday things. Vouch decides how far it may go — and shows you why, every time.</p>
+          </div>
+          <div class="hh-controls">
+            <button class="small demo-only" id="hhFwd1" title="Demo control: move the household's clock forward">+1 day</button>
+            <button class="small demo-only" id="hhFwd7" title="Demo control: move the household's clock forward">+1 week</button>
+            <button class="primary" id="hhSetup">Load the demo household</button>
           </div>
         </div>
-        <div class="composer">
-          <input id="chatInput" placeholder="Keep detergent stocked, under $15 a month…" autocomplete="off" />
-          <button class="primary" id="chatSend">Send</button>
-        </div>
-        <!-- Examples, not a menu: they show the range, they are not the only way in. -->
-        <div class="chips" id="chips">
-          <button class="small chip-btn" data-say="What detergent can you actually buy right now?">what's available?</button>
-          <button class="small chip-btn" data-say="What have you bought me so far?">what did you buy?</button>
-          <button class="small chip-btn" data-say="What am I allowing you to do right now?">what am I allowing?</button>
+
+        <details class="story" id="story" open>
+          <summary>How Vouch works</summary>
+          <ol class="story-steps">
+            <li><span class="story-n">1</span><b>You decide what it may do</b><span>item by item — remind me, ask me, or buy within my limits</span></li>
+            <li><span class="story-n">2</span><b>A gate checks every order</b><span>before it is placed, on the store's own checkout — not after</span></li>
+            <li><span class="story-n">3</span><b>Every action leaves a record</b><span>bought, held or failed — with the checks it ran, and why</span></li>
+            <li><span class="story-n">4</span><b>“I didn't want that”</b><span>one sentence, and it gets more careful next time</span></li>
+          </ol>
+          <div class="story-foot">
+            <button class="small primary" id="tourStart">Take the 7-step tour</button>
+            <button class="small ghost" id="storyHide">Got it</button>
+          </div>
+        </details>
+
+        <section class="block" id="waiting" aria-labelledby="waitTitle">
+          <div class="block-head">
+            <h2 id="waitTitle">Waiting for you</h2>
+          </div>
+          <div id="pending"></div>
+          <div class="needs" id="hhNeeds"></div>
+        </section>
+
+        <section class="block" id="hhPanel" aria-labelledby="hhTitle">
+          <div class="block-head">
+            <h2 id="hhTitle">Your everyday things</h2>
+            <span class="meta">how many days are left, and what it may do about it</span>
+          </div>
+          <p class="hint">
+            <b>Remind</b> tells you · <b>Ask</b> suggests an order and waits · <b>Auto</b> buys within your
+            limits and tells you after. It earns more only when you say so, and loses it the moment you
+            dispute something.
+          </p>
+          <div class="items" id="hhItems"></div>
+          <div class="log" id="hhLog" hidden></div>
+        </section>
+
+        <div class="jump">
+          <a class="jump-card" href="#record"><b>Everything it did</b><span>every purchase, hold and failure — and how each was decided</span></a>
+          <a class="jump-card" href="#compare"><b>Why not just Auto Buy?</b><span>the same year, replayed both ways</span></a>
+          <a class="jump-card" href="#rules"><b>What it's allowed to do</b><span>your limits, and how careful it is right now</span></a>
         </div>
       </section>
-    </div>
 
-    <!-- THE HOUSEHOLD VIEW -->
-    <div>
-      <section class="panel" aria-labelledby="mandTitle">
-        <div class="panel-head">
-          <h3 id="mandTitle">What it's allowed to do</h3>
-          <span class="eyebrow">mandates</span>
+      <!-- RECORD: one Vouch per action -->
+      <section class="view" data-view="record" aria-labelledby="recTitle">
+        <div class="view-head">
+          <h1 id="recTitle">What it actually did</h1>
+          <p class="lede">One record per action: bought, held, failed or disputed. Each shows the chain from your rules to the checkout, the order and the doorstep.</p>
         </div>
-        <p class="hint">
-          The bar is the confidence the agent must reach to buy on its own. A dispute pushes it up;
-          only you can set where it starts.
-        </p>
+        <div id="storeStatus"></div>
+        <div id="recordStatus"></div>
+        <div id="vouches"><div class="empty">loading…</div></div>
+        <div class="ring-note">
+          <strong>About the doorstep:</strong> Ring publishes no “package delivered” event.
+          <em>corroborated</em> means a motion event fell inside the window the order was expected
+          in — correlation, never proof. <em>unconfirmed</em> means no such event yet.
+          <em>not applicable</em> means nothing was bought. In this console the doorbell is simulated
+          and nothing scripts it, so a new order reads <em>unconfirmed</em>.
+        </div>
+      </section>
+
+      <!-- RULES: the mandates -->
+      <section class="view" data-view="rules" aria-labelledby="mandTitle">
+        <div class="view-head">
+          <h1 id="mandTitle">What it's allowed to do</h1>
+          <p class="lede">The bar is the confidence the agent must reach to buy on its own. A dispute pushes it up; only you can set where it starts.</p>
+        </div>
         <div id="mandates"><div class="empty">loading…</div></div>
 
         <div class="note">
@@ -485,7 +609,7 @@
           <span class="meta" id="editingLabel"></span>
         </div>
 
-        <div id="mandateForm" hidden style="margin-top:12px">
+        <div id="mandateForm" class="card form" hidden>
           <div class="row">
             <div style="grid-column:1/-1">
               <label for="fGoal">Goal: what you're asking for, in your words</label>
@@ -501,9 +625,9 @@
           </div>
           <div style="margin-top:10px">
             <label>Hold for my approval when…</label>
-            <label class="meta" style="display:inline-block;margin-right:14px"><input type="checkbox" id="rPrice" checked style="width:auto"> over the max price</label>
-            <label class="meta" style="display:inline-block;margin-right:14px"><input type="checkbox" id="rBrand" checked style="width:auto"> an unfamiliar brand</label>
-            <label class="meta" style="display:inline-block"><input type="checkbox" id="rQty" checked style="width:auto"> over the max quantity</label>
+            <label class="meta check"><input type="checkbox" id="rPrice" checked> over the max price</label>
+            <label class="meta check"><input type="checkbox" id="rBrand" checked> an unfamiliar brand</label>
+            <label class="meta check"><input type="checkbox" id="rQty" checked> over the max quantity</label>
           </div>
           <div class="actions">
             <button class="primary" id="saveMandate">Save</button>
@@ -516,136 +640,153 @@
         </div>
       </section>
 
-      <section class="panel" aria-labelledby="recTitle">
-        <div class="panel-head">
-          <h3 id="recTitle">What it actually did</h3>
-          <span class="eyebrow">the record</span>
+      <!-- COMPARE (W4-2): Plain Auto Buy vs Vouch, from a real replay of one simulated household -->
+      <section class="view" data-view="compare" id="replayPanel" aria-labelledby="replayTitle">
+        <div class="view-head">
+          <h1 id="replayTitle">Why not just Auto Buy?</h1>
+          <p class="lede">
+            Auto Buy orders when the price reaches your target. It never sees how much is left. Vouch's
+            household agent orders when the forecast says you're about to run out. Same household, same
+            year, same habits — only the rule for when to buy differs.
+          </p>
+          <span class="badge plain">a simulated household, not yours — a year, replayed both ways</span>
         </div>
-        <p class="hint">
-          One Vouch per action: bought, held or disputed. Each shows the chain from your mandate
-          to the checkout, the order and the doorstep.
-        </p>
-        <div id="storeStatus"></div>
-        <div id="recordStatus"></div>
-        <div id="pending"></div>
-        <div id="vouches"><div class="empty">loading…</div></div>
-        <div class="ring-note">
-          <strong>About the doorstep:</strong> Ring publishes no “package delivered” event.
-          <em>corroborated</em> means a motion event fell inside the window the order was expected
-          in — correlation, never proof. <em>unconfirmed</em> means no such event yet.
-          <em>not applicable</em> means nothing was bought. In this console the doorbell is simulated
-          and nothing scripts it, so a new order reads <em>unconfirmed</em>.
+        <div class="actions" style="align-items:center">
+          <span class="meta" id="replayWho">Household —</span>
+          <button class="small" id="replayAnother">Try another household</button>
+          <label for="replayDeals" class="meta inline">A deal comes along about every</label>
+          <select id="replayDeals" style="width:auto">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+          </select>
+        </div>
+        <div id="replayBody"><div class="empty">loading…</div></div>
+        <div class="fine" style="margin-top:10px">
+          The same code produced the published figures across 200 simulated households
+          (<code>packages/eval/README.md</code>). The deals, the target (15% below usual) and the habits are
+          assumptions, not Amazon data. Auto Buy is modelled generously: re-armed after every purchase.
         </div>
       </section>
-    </div>
+
+      <!-- TV (W8): the household view at ten feet -->
+      <section class="view" data-view="tv" id="tvView" aria-labelledby="tvTitle">
+        <h1 id="tvTitle" class="sr-only">Household view for a TV</h1>
+        <div id="tvBody"></div>
+      </section>
+
+      <!-- DEMO (presenter only): playing "the world", and acting as the agent by hand -->
+      <section class="view" data-view="demo" id="controls" aria-labelledby="demoTitle">
+        <div class="view-head">
+          <h1 id="demoTitle">Demo controls</h1>
+          <p class="lede">Change the world the agent acts in, break things on purpose, or act as the agent by hand. Each of these is a simulation.</p>
+        </div>
+
+        <div class="subhead">The store — change a price and the agent has to react to a number it didn't choose</div>
+        <div class="grid" id="catalog"><div class="empty">loading…</div></div>
+
+        <div class="subhead">Simulate failures — Vouch should fail closed and say so</div>
+        <p class="hint" style="margin-top:0">
+          Each switch is a simulation. The store going down should mean no order and a Failed record;
+          the model going down should leave the gate, the record and the household agent working.
+        </p>
+        <div class="actions" style="margin-top:0" id="failSwitches">
+          <button class="small" id="failStore">Store: up</button>
+          <button class="small" id="failModel">Model: up</button>
+          <button class="small" id="bellCorroborated">Doorbell: next orders corroborated</button>
+          <button class="small" id="bellUnconfirmed">Doorbell: next orders unconfirmed</button>
+        </div>
+
+        <div class="subhead">The record — prove it cannot be quietly rewritten</div>
+        <p class="hint" style="margin-top:0">
+          Edits the price of an old purchase directly in the database, bypassing the app — the way someone
+          with access to the disk could. Watch the record status on the Record view.
+        </p>
+        <div class="actions" style="margin-top:0">
+          <button class="small" id="tamperBtn">Simulate someone editing an old record</button>
+        </div>
+
+        <div class="subhead">Study results — what real people said</div>
+        <div id="studySummary" class="meta"></div>
+        <div class="actions" style="margin-top:6px">
+          <button class="small" id="studyExport">Export answers (CSV)</button>
+        </div>
+
+        <div class="subhead">Propose a purchase by hand — goes through the same gate the agent uses</div>
+        <p class="hint" style="margin-top:0">
+          The server opens a real UCP checkout, takes it to <code>ready_for_complete</code>, then decides
+          whether it may become an order. The price is read from the merchant, never from this form.
+        </p>
+        <div class="row">
+          <div><label for="pMandate">Mandate</label><select id="pMandate"></select></div>
+          <div><label for="pProduct">Product</label><select id="pProduct"></select></div>
+          <div><label for="pQty">Quantity</label><input id="pQty" type="number" min="1" value="1" /></div>
+          <div><label for="pConf">Agent confidence</label><input id="pConf" type="number" min="0" max="1" step="0.01" value="0.92" /></div>
+          <div><label for="pReason">Reason</label><input id="pReason" value="price_drop, preferred_brand" /></div>
+          <div><button class="primary" id="proposeBtn">Propose</button></div>
+        </div>
+        <div id="proposeResult"></div>
+      </section>
+    </main>
+
+    <!-- TALK: the conversation — stands in for Alexa+, always one glance away -->
+    <aside class="talk view" data-view="talk" aria-labelledby="chatTitle">
+      <section class="chat">
+        <div class="panel-head">
+          <h3 id="chatTitle">Talk to your agent</h3>
+          <span class="badge info">stands in for Alexa+</span>
+        </div>
+        <p class="hint">
+          Say it in your own words. Every step it takes is shown — watching it check your rules
+          is the point, not a detail worth hiding.
+        </p>
+        <div id="chatBanner" hidden></div>
+        <div id="transcript" class="transcript">
+          <div class="transcript-empty" id="transcriptEmpty">
+            Nothing said yet. Try “keep detergent stocked under $15”, or “why didn't you buy that?”
+          </div>
+        </div>
+        <div class="composer">
+          <input id="chatInput" placeholder="Keep detergent stocked, under $15 a month…" autocomplete="off" />
+          <button class="primary" id="chatSend">Send</button>
+        </div>
+        <!-- Examples, not a menu: they show the range, they are not the only way in. -->
+        <div class="chips" id="chips">
+          <button class="small chip-btn" data-say="What detergent can you actually buy right now?">what's available?</button>
+          <button class="small chip-btn" data-say="What have you bought me so far?">what did you buy?</button>
+          <button class="small chip-btn" data-say="What am I allowing you to do right now?">what am I allowing?</button>
+        </div>
+      </section>
+    </aside>
   </div>
 
-  <!-- W4-2: Plain Auto Buy vs Vouch, from a real replay of one simulated household -->
-  <section class="panel" id="replayPanel" aria-labelledby="replayTitle" style="margin-bottom:16px">
-    <div class="panel-head">
-      <h3 id="replayTitle">Why not just Auto Buy?</h3>
-      <span class="meta">a simulated household, not yours — a year, replayed both ways</span>
-    </div>
-    <p class="hint" style="margin-top:0">
-      Auto Buy orders when the price reaches your target. It never sees how much is left. Vouch's
-      household agent orders when the forecast says you're about to run out. Same household, same
-      year, same habits — only the rule for when to buy differs.
-    </p>
-    <div class="actions" style="margin-top:0;align-items:center">
-      <span class="meta" id="replayWho">Household —</span>
-      <button class="small" id="replayAnother">Try another household</button>
-      <label for="replayDeals" class="meta" style="margin:0 0 0 8px">A deal comes along about every</label>
-      <select id="replayDeals" style="width:auto">
-        <option value="7">7 days</option>
-        <option value="14">14 days</option>
-        <option value="30" selected>30 days</option>
-        <option value="60">60 days</option>
-      </select>
-    </div>
-    <div id="replayBody"><div class="empty">loading…</div></div>
-    <div class="fine" style="margin-top:10px">
-      The same code produced the published figures across 200 simulated households
-      (<code>packages/eval/README.md</code>). The deals, the target (15% below usual) and the habits are
-      assumptions, not Amazon data. Auto Buy is modelled generously: re-armed after every purchase.
-    </div>
-  </section>
-
-  <!-- DEMO CONTROLS: playing "the world" and acting as the agent by hand -->
-  <details class="panel controls" id="controls">
-    <summary>
-      <h3>Demo controls</h3>
-      <span class="meta">change prices, or act as the agent by hand</span>
-    </summary>
-
-    <div class="subhead">The store — change a price and the agent has to react to a number it didn't choose</div>
-    <div class="grid" id="catalog"><div class="empty">loading…</div></div>
-
-    <div class="subhead">Study results — what real people said</div>
-    <div id="studySummary" class="meta"></div>
-    <div class="actions" style="margin-top:6px">
-      <button class="small" id="studyExport">Export answers (CSV)</button>
-    </div>
-
-    <div class="subhead">Simulate failures — Vouch should fail closed and say so</div>
-    <p class="hint" style="margin-top:0">
-      Each switch is a simulation. The store going down should mean no order and a Failed record;
-      the model going down should leave the gate, the record and the household agent working.
-    </p>
-    <div class="actions" style="margin-top:0" id="failSwitches">
-      <button class="small" id="failStore">Store: up</button>
-      <button class="small" id="failModel">Model: up</button>
-      <button class="small" id="bellCorroborated">Doorbell: next orders corroborated</button>
-      <button class="small" id="bellUnconfirmed">Doorbell: next orders unconfirmed</button>
-    </div>
-
-    <div class="subhead">The record — prove it cannot be quietly rewritten</div>
-    <p class="hint" style="margin-top:0">
-      Edits the price of an old purchase directly in the database, bypassing the app — the way someone
-      with access to the disk could. Watch the record status above the purchases.
-    </p>
-    <div class="actions" style="margin-top:0">
-      <button class="small" id="tamperBtn">Simulate someone editing an old record</button>
-    </div>
-
-    <div class="subhead">Propose a purchase by hand — goes through the same gate the agent uses</div>
-    <p class="hint" style="margin-top:0">
-      The server opens a real UCP checkout, takes it to <code>ready_for_complete</code>, then decides
-      whether it may become an order. The price is read from the merchant, never from this form.
-    </p>
-    <div class="row">
-      <div><label for="pMandate">Mandate</label><select id="pMandate"></select></div>
-      <div><label for="pProduct">Product</label><select id="pProduct"></select></div>
-      <div><label for="pQty">Quantity</label><input id="pQty" type="number" min="1" value="1" /></div>
-      <div><label for="pConf">Agent confidence</label><input id="pConf" type="number" min="0" max="1" step="0.01" value="0.92" /></div>
-      <div><label for="pReason">Reason</label><input id="pReason" value="price_drop, preferred_brand" /></div>
-      <div><button class="primary" id="proposeBtn">Propose</button></div>
-    </div>
-    <div id="proposeResult"></div>
-  </details>
-
-  <section class="panel honesty-wrap" style="margin-top:16px">
-    <div class="panel-head"><h3>What's real here, and what's simulated</h3></div>
-    <div class="honesty">
-      <div>
-        <span class="badge ok">real</span>
-        <ul>
-          <li>The MCP server and its gate — it runs before the order, not after</li>
-          <li>The UCP checkout lifecycle (open standard), implemented on both sides</li>
-          <li>The record, the dispute and the threshold change, stored in SQLite</li>
-          <li>The agent: a Strands agent calling the same tools this page calls</li>
-        </ul>
+  <footer class="foot">
+    <details class="honesty-wrap">
+      <summary>What's real here, and what's simulated</summary>
+      <div class="honesty">
+        <div>
+          <span class="badge ok">real</span>
+          <ul>
+            <li>The MCP server and its gate — it runs before the order, not after</li>
+            <li>The UCP checkout lifecycle (open standard), implemented on both sides</li>
+            <li>The record, the dispute and the threshold change, stored in SQLite</li>
+            <li>The agent: a Strands agent calling the same tools this page calls</li>
+          </ul>
+        </div>
+        <div>
+          <span class="badge plain">simulated</span>
+          <ul>
+            <li>The merchant's catalog, and payment — no money moves</li>
+            <li>The doorbell in this console (a real webhook receiver exists, off by default)</li>
+            <li>The threshold rules — deterministic on purpose. A "why?" may be written by the model when one is configured; each says which wrote it</li>
+            <li>Alexa+ itself — this chat stands in for it</li>
+            <li>The TV view is a TV-layout web page, not a native Fire TV app</li>
+          </ul>
+        </div>
       </div>
-      <div>
-        <span class="badge plain">simulated</span>
-        <ul>
-          <li>The merchant's catalog, and payment — no money moves</li>
-          <li>The doorbell in this console (a real webhook receiver exists, off by default)</li>
-          <li>The threshold rules — deterministic on purpose. A "why?" may be written by the model when one is configured; each says which wrote it</li>
-          <li>Alexa+ itself — this chat stands in for it</li>
-        </ul>
-      </div>
-    </div>
-  </section>
+    </details>
+  </footer>
 
 </div>
 
@@ -695,6 +836,82 @@ function esc(s) {
 const escapeHtml = esc;
 // A Failed attempt may never have reached a priced checkout: say so, never "$0.00".
 function money(n) { return n === null || n === undefined ? "price unknown" : "$" + Number(n).toFixed(2); }
+
+/* ---------- views, presenter mode ---------- */
+
+/*
+ * One page, several views, switched by the URL hash (#home, #record, …) so a
+ * view can be linked to and the back button works. Every element keeps its
+ * id wherever it now lives, so nothing below needed to know about views —
+ * except scrolling to something, which goes through reveal().
+ *
+ * Presenter mode holds the demo machinery — the guided tour, study mode, the
+ * clock controls and the Demo view — so the product itself reads as a
+ * product. Off by default; ?presenter=1 turns it on for a recording.
+ */
+const VIEWS = ["home", "record", "rules", "compare", "tv", "talk", "demo"];
+const WIDE = window.matchMedia("(min-width: 1100px)");
+// The TV view draws from the household state, which does not exist until the
+// first refresh. Opening #tv directly used to call it at start-up and throw,
+// which stopped the whole page at "connecting…". (Found by screenshotting it.)
+let tvReady = false;
+
+function go(view) {
+  if (!VIEWS.includes(view)) view = "home";
+  if (view === "demo" && !document.body.classList.contains("presenter")) view = "home";
+  if (view === "talk" && WIDE.matches) view = "home"; // the chat is already beside every view
+  document.body.dataset.view = view;
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("on", v.dataset.view === view));
+  document.querySelectorAll("[data-tab]").forEach((t) => {
+    const on = t.dataset.tab === view;
+    t.classList.toggle("on", on);
+    if (on) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
+  });
+  if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
+  if (view === "tv" && tvReady) renderTv();
+}
+
+/** Scrolls to an element — switching first to the view it lives in. */
+function reveal(el) {
+  if (!el) return;
+  const view = el.closest(".view")?.dataset.view;
+  if (view && document.body.dataset.view !== view && !(view === "talk" && WIDE.matches)) go(view);
+  requestAnimationFrame(() => el.scrollIntoView({ block: "center", behavior: "smooth" }));
+}
+
+function setPresenter(on) {
+  document.body.classList.toggle("presenter", on);
+  $("presenterToggle").setAttribute("aria-pressed", String(on));
+  $("presenterToggle").textContent = on ? "Presenter: on" : "Presenter";
+  try { localStorage.setItem("vouch.presenter", on ? "1" : "0"); } catch { /* fine: it just won't be remembered */ }
+  if (!on && document.body.dataset.view === "demo") go("home");
+}
+
+function readPref(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+window.addEventListener("hashchange", () => go(location.hash.slice(1)));
+WIDE.addEventListener("change", () => go(document.body.dataset.view));
+$("presenterToggle").addEventListener("click", () => setPresenter(!document.body.classList.contains("presenter")));
+$("tourStart").addEventListener("click", () => {
+  setPresenter(true);
+  document.querySelector(".dock")?.classList.remove("folded");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+$("tourHide").addEventListener("click", () => {
+  const dock = document.querySelector(".dock");
+  dock.classList.toggle("folded");
+  $("tourHide").textContent = dock.classList.contains("folded") ? "Unfold" : "Fold";
+});
+$("storyHide").addEventListener("click", () => {
+  $("story").open = false;
+  try { localStorage.setItem("vouch.storySeen", "1"); } catch { /* shown again next time */ }
+});
+if (readPref("vouch.storySeen") === "1") $("story").open = false;
+
+setPresenter(new URLSearchParams(location.search).get("presenter") === "1" || readPref("vouch.presenter") === "1");
+go(location.hash.slice(1) || "home");
 
 /* ---------- household language ---------- */
 
@@ -818,7 +1035,7 @@ const BEATS = [
           if (chatReady) return say("Why didn't you buy the Brand C one?");
           const held = state.vouches.find((v) => v.action.status === "PendingApproval");
           if (!held) throw new Error("Nothing is held yet — ask for Brand C first.");
-          document.getElementById(`vouch-${held.vouch_id}`)?.scrollIntoView({ block: "center" });
+          reveal(document.getElementById(`vouch-${held.vouch_id}`));
           return explain(held.vouch_id);
         } },
     ],
@@ -838,7 +1055,7 @@ const BEATS = [
       { label: "Show me the held purchase", primary: true, run: () => {
           const held = state.vouches.find((v) => v.action.status === "PendingApproval");
           if (!held) throw new Error("Nothing is waiting — do step 4 first.");
-          document.getElementById(`vouch-${held.vouch_id}`)?.scrollIntoView({ block: "center" });
+          reveal(document.getElementById(`vouch-${held.vouch_id}`));
           toast("Approve (your passkey) or Keep blocked — your choice, on the record.");
         } },
       { label: "Set up a passkey first", run: () => {
@@ -888,7 +1105,7 @@ const BEATS = [
         } },
       { label: "Just show me the record", run: () => {
           recordSeen = true; setFlag("vouch.recordSeen");
-          document.getElementById("recordStatus")?.scrollIntoView({ block: "center" });
+          reveal(document.getElementById("recordStatus"));
           renderTour();
         } },
     ],
@@ -1133,7 +1350,7 @@ function renderStudy() {
 $("studyStart").addEventListener("click", () => {
   study = { participant: `P-${Math.random().toString(16).slice(2, 6).toUpperCase()}`, stage: "consent" };
   saveStudy(); renderStudy();
-  document.getElementById("studyCard")?.scrollIntoView({ block: "center" });
+  reveal(document.getElementById("studyCard"));
 });
 
 async function loadStudySummary() {
@@ -1206,7 +1423,7 @@ async function seedMandate() {
 function disputeLatestPurchase() {
   const bought = detergentBought() ?? state.vouches.find((v) => v.action.status === "Complete" && !v.dispute);
   if (!bought) { toast("Nothing bought to dispute yet — do step 2 first.", true); return; }
-  document.getElementById(`vouch-${bought.vouch_id}`)?.scrollIntoView({ block: "center" });
+  reveal(document.getElementById(`vouch-${bought.vouch_id}`));
   openDispute(bought.vouch_id);
 }
 
@@ -1505,7 +1722,7 @@ function renderPending() {
   $("pending").querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => approve(b.dataset.approve)));
   $("pending").querySelectorAll("[data-decline]").forEach((b) => b.addEventListener("click", () => decline(b.dataset.decline)));
   $("pending").querySelectorAll("[data-explain]").forEach((b) => b.addEventListener("click", () => {
-    document.getElementById(`vouch-${b.dataset.explain}`)?.scrollIntoView({ block: "center" });
+    reveal(document.getElementById(`vouch-${b.dataset.explain}`));
     explain(b.dataset.explain);
   }));
 }
@@ -1659,7 +1876,7 @@ async function dispute(vouchId, reason) {
     });
     toast(`Mandate tightened: ${r.threshold_before.toFixed(2)} → ${r.threshold_after.toFixed(2)}`);
     await refresh();
-    document.querySelector(".mandate")?.scrollIntoView({ block: "center" });
+    reveal(document.querySelector(".mandate"));
   } catch (e) { toast(e.message, true); }
 }
 
@@ -1802,6 +2019,9 @@ let chatBusy = false;
 async function say(message) {
   if (chatBusy || !message.trim()) return;
   if (study) { study.usedChat = true; saveStudy(); }
+  // On a narrow screen the chat is its own view: open it, so a tour step that
+  // talks to the agent is never talking into a hidden panel.
+  if (!WIDE.matches) go("talk");
   // No client-side "is the model ready" gate. The server is the authority on
   // that and answers 503 with a readable reason, which lands in the
   // transcript. A gate here once trusted a health check that ran before the
@@ -2060,7 +2280,7 @@ async function tamperDemo() {
     toast(`Edited an old price in the database: $${Number(r.price_was).toFixed(2)} → $${Number(r.price_now).toFixed(2)}. Now look at the record.`);
   } catch (e) { toast(e.message, true); }
   await refresh();
-  document.getElementById("recordStatus")?.scrollIntoView({ block: "center" });
+  reveal(document.getElementById("recordStatus"));
 }
 $("tamperBtn").addEventListener("click", tamperDemo);
 
@@ -2119,7 +2339,7 @@ function needsFor(item) {
     return {
       cls: "held", icon: "✋",
       text: `Your agent tried to buy ${name}, but it's outside what you allowed — so no order was placed.
-             <span class="why">It's waiting in the record below. Only you can approve it.</span>`,
+             <span class="why">It's waiting for you, above and on the Record. Only you can approve it.</span>`,
       actions: `<button class="small" data-hh-see="${esc(item.awaitingApproval)}">Show me</button>`,
     };
   }
@@ -2213,6 +2433,124 @@ function itemCard(item) {
     </div>`;
 }
 
+/* ---------- the TV view (W8) ---------- */
+
+/*
+ * The household at ten feet: what's waiting, what's running low, what it did
+ * lately, and how far each item is handed over. Built from the same state as
+ * Home — nothing here is a second source of truth — in type a sofa can read.
+ * Arrow keys move between tiles (a remote's D-pad sends the same keys), Enter
+ * opens one, Escape goes home. It is a TV-LAYOUT WEB VIEW, not a Fire TV app,
+ * and says so.
+ */
+const TV_STATUS = {
+  Complete: ["ok", "Bought"],
+  PendingApproval: ["hold", "Waiting for you"],
+  Failed: ["bad", "Failed — nothing bought"],
+  Cancelled: ["plain", "Kept blocked"],
+};
+const TV_MODE = { auto: "Buys on its own", ask: "Asks you first", remind: "Just reminds you" };
+
+function renderTv() {
+  if (!hh.set_up) {
+    $("tvBody").innerHTML = `<div class="tv"><div class="tv-empty">No household yet.<br><span>Load the demo household on Home, then come back.</span></div></div>`;
+    return;
+  }
+  const held = state.vouches.filter((v) => v.action.status === "PendingApproval");
+  const asks = hh.items.map((i) => ({ item: i, need: needsFor(i) })).filter((x) => x.need && x.need.cls !== "held");
+  const waitingIds = new Set(asks.map((x) => x.item.item_id));
+  const low = [...hh.items].filter((i) => !waitingIds.has(i.item_id)).sort((a, b) => (a.forecast.daysLeft?.median ?? 999) - (b.forecast.daysLeft?.median ?? 999)).slice(0, 4);
+  const lately = state.vouches.slice(0, 4);
+  const tile = (go, cls, body) => `<button class="tv-tile ${cls}" data-tv-go="${esc(go)}">${body}</button>`;
+
+  $("tvBody").innerHTML = `
+    <div class="tv">
+      <div class="tv-top">
+        <div><div class="tv-date">${esc(niceDate(hh.today))}</div><div class="tv-hello">Your home, looked after</div></div>
+        <div class="tv-note">TV layout · ← ↑ ↓ → to move · Enter to open · Esc for home</div>
+      </div>
+      <div class="tv-grid">
+        <section>
+          <h2>Waiting for you</h2>
+          ${held.length + asks.length === 0 ? `<div class="tv-calm">Nothing needs you.</div>` : ""}
+          ${held.map((v) => tile(`record:${v.vouch_id}`, "hold", `
+              <span class="tv-big">${esc(productTitle(v.decision.product))}</span>
+              <span class="tv-sub">${esc(money(v.decision.price))} · ${esc((v.authority.triggered_rules ?? []).map(ruleText).join(" · ") || "outside what you allowed")}</span>
+              <span class="tv-tag">No order placed — only you can approve</span>`)).join("")}
+          ${asks.map(({ item, need }) => tile(`home:${item.item_id}`, need.cls, `
+              <span class="tv-big">${esc(item.name)}</span>
+              <span class="tv-sub">${esc(daysLeftText(item.forecast))}</span>
+              <span class="tv-tag">${need.cls === "ask" ? "Wants to order your usual" : need.cls === "offer" ? "Ready to take this on" : "Just letting you know"}</span>`)).join("")}
+        </section>
+        <section>
+          <h2>Running low</h2>
+          ${low.map((item) => tile(`home:${item.item_id}`, "", `
+              <span class="tv-big">${esc(item.name)}</span>
+              <span class="tv-sub">${esc(daysLeftText(item.forecast))}</span>
+              <span class="tv-tag mode-${esc(item.autonomy?.mode ?? "ask")}">${esc(TV_MODE[item.autonomy?.mode ?? "ask"])}</span>`)).join("")}
+        </section>
+        <section>
+          <h2>Lately</h2>
+          ${lately.length === 0 ? `<div class="tv-calm">Nothing yet.</div>` : ""}
+          ${lately.map((v) => {
+            const [cls, label] = v.dispute ? ["bad", "You said you didn't want it"] : TV_STATUS[v.action.status] ?? ["plain", v.action.status];
+            const nobody = v.trace?.started_by === "household_agent" ? " · nobody asked" : "";
+            return tile(`record:${v.vouch_id}`, cls, `
+              <span class="tv-big">${esc(productTitle(v.decision.product))}</span>
+              <span class="tv-sub">${esc(money(v.decision.price))}${esc(nobody)}</span>
+              <span class="tv-tag">${esc(label)}</span>`);
+          }).join("")}
+        </section>
+      </div>
+      <section class="tv-trust">
+        <h2>How far each is handed over</h2>
+        <div class="tv-trust-row">
+          ${hh.items.map((item) => {
+            const m = item.autonomy?.mode ?? "ask";
+            const level = { remind: 1, ask: 2, auto: 3 }[m];
+            return `<div class="tv-trust-item"><span>${esc(item.name)}</span>
+              <span class="tv-bars" aria-label="${esc(MODE_NAME[m])}">${[1, 2, 3].map((n) => `<i class="${n <= level ? "on" : ""}"></i>`).join("")}</span>
+              <span class="tv-trust-mode">${esc(MODE_NAME[m])}</span></div>`;
+          }).join("")}
+        </div>
+      </section>
+    </div>`;
+
+  $("tvBody").querySelectorAll("[data-tv-go]").forEach((t) =>
+    t.addEventListener("click", () => {
+      const [view, id] = t.dataset.tvGo.split(":");
+      if (view === "record") reveal(document.getElementById(`vouch-${id}`) ?? document.getElementById("vouches"));
+      else reveal(document.getElementById(`hh-${id}`));
+    }));
+  if (!$("tvBody").contains(document.activeElement)) $("tvBody").querySelector(".tv-tile")?.focus({ preventScroll: true });
+}
+
+/** D-pad / arrow keys: move to the nearest tile in that direction. */
+document.addEventListener("keydown", (e) => {
+  if (document.body.dataset.view !== "tv") return;
+  if (e.key === "Escape" || e.key === "Backspace") { e.preventDefault(); go("home"); return; }
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!dir) return;
+  const tiles = [...document.querySelectorAll("#tvBody .tv-tile")];
+  const from = document.activeElement?.closest?.(".tv-tile");
+  if (!from) { tiles[0]?.focus(); e.preventDefault(); return; }
+  const a = from.getBoundingClientRect();
+  const ac = [a.left + a.width / 2, a.top + a.height / 2];
+  let best = null, bestScore = Infinity;
+  for (const t of tiles) {
+    if (t === from) continue;
+    const b = t.getBoundingClientRect();
+    const dx = b.left + b.width / 2 - ac[0];
+    const dy = b.top + b.height / 2 - ac[1];
+    const along = dx * dir[0] + dy * dir[1];
+    if (along <= 1) continue; // not in that direction
+    const across = Math.abs(dx * dir[1]) + Math.abs(dy * dir[0]);
+    const score = along + across * 2;
+    if (score < bestScore) { bestScore = score; best = t; }
+  }
+  if (best) { e.preventDefault(); best.focus(); best.scrollIntoView({ block: "nearest" }); }
+});
+
 const LOG_TEXT = {
   proposed: (a) => a.outcome === "completed" ? `bought ${itemName(a.item_id).toLowerCase()} on its own` : `tried to buy ${itemName(a.item_id).toLowerCase()} — held for you`,
   notified: (a) => a.mode === "ask" ? `asked you about ${itemName(a.item_id).toLowerCase()}` : `reminded you about ${itemName(a.item_id).toLowerCase()}`,
@@ -2234,11 +2572,15 @@ function renderHousehold() {
     return;
   }
 
-  const needs = hh.items.map(needsFor).filter(Boolean);
+  // A held purchase is already shown above, with Approve and Keep blocked —
+  // a second "it's waiting" card for the same thing was noise.
+  const needs = hh.items.map(needsFor).filter((n) => n && n.cls !== "held");
   $("hhNeeds").innerHTML = needs.length
     ? needs.map((n) => `<div class="need ${n.cls}"><div class="need-icon" aria-hidden="true">${n.icon}</div>
         <div><div class="need-text">${n.text}</div><div class="actions">${n.actions}</div></div></div>`).join("")
-    : `<div class="calm">Nothing needs you right now.</div>`;
+    : state.vouches.some((v) => v.action.status === "PendingApproval")
+      ? "" // the held purchase above is what needs you
+      : `<div class="calm">Nothing needs you right now. It will ask when something does.</div>`;
   $("hhItems").innerHTML = hh.items.map(itemCard).join("");
 
   if (hhLog.length) {
@@ -2268,7 +2610,7 @@ function renderHousehold() {
     run(() => post(`items/${encodeURIComponent(s.dataset.hhSnooze)}/respond`, { response: "snooze", until_day: hh.today + Number(s.value) }));
   }));
   $("hhNeeds").querySelectorAll("[data-hh-see]").forEach((b) => b.addEventListener("click", () =>
-    document.getElementById(`vouch-${b.dataset.hhSee}`)?.scrollIntoView({ block: "center" })));
+    reveal(document.getElementById(`vouch-${b.dataset.hhSee}`))));
 
   document.querySelectorAll("#hhPanel [data-hh-level]").forEach((b) => b.addEventListener("click", () => run(() => {
     const packs = Number(b.dataset.p);
@@ -2323,6 +2665,11 @@ async function refresh() {
     // The household first: vouch cards read its clock to date "bought on its own" lines.
     await refreshHousehold();
     renderCatalog(); renderMandates(); renderSelectors(); renderPending(); renderVouches(); renderTour();
+    const held = state.vouches.filter((v) => v.action.status === "PendingApproval").length;
+    $("tabHeld").hidden = held === 0;
+    $("tabHeld").textContent = String(held);
+    tvReady = true;
+    if (document.body.dataset.view === "tv") renderTv();
     await loadRecord();
     await loadFailures();
     await loadStudySummary();

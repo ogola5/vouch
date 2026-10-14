@@ -800,6 +800,39 @@ the household agent and the fixed-wording explanations all work. `mcp-server` no
 the key reaches it. Its only variables are model keys and the Ring HMAC key, and real Ring still
 needs `RING_MODE=real`.
 
+**UI/UX overhaul + W8 DONE 2026-10-14 (owner: "a complete overhaul", chose restructure + restyle
+with W8 folded in).**
+
+The console is now separate views behind a sticky top bar:
+- **Home:** what needs you, then your items, then links onward.
+- **Record**, **Rules**, and **vs Auto Buy** (the W4 replay).
+- **TV** (W8).
+- **Talk:** the chat. It sits beside every view on wide screens, and is its own tab on narrow ones.
+
+The views are switched by the URL hash, so they can be linked to and the back button works.
+
+**Presenter mode** holds the demo machinery: the 7-step tour, study mode, the +1 day / +1 week
+clock, and a **Demo** view with the store, the failure switches, the tamper demo, study results and
+propose-by-hand. It is off by default. Home's "Take the 7-step tour" turns it on, and so does
+`?presenter=1` for recording.
+
+How it was done without breaking anything:
+- Every element id was kept, so no behaviour moved.
+- Every jump to an element goes through `reveal()`, which switches to that element's view first.
+- Home adds a four-step "How Vouch works" strip, and a held purchase now shows once rather than
+  twice.
+- The visual system was refreshed: tokens, type scale, cards, tabs and focus rings.
+
+**W8, the TV view:** dark and large-type, drawn from the same state as Home. It shows what's waiting
+for you, what's running low, what it did lately, and three bars per item for how far each is handed
+over. Arrow keys and D-pad move between tiles, Enter opens one, and Esc goes home. It is labelled
+on screen and in the README as a TV-layout web page, not a Fire TV app.
+
+**Found by screenshotting (headless Edge, a throwaway stack on ports 50xx):** opening `#tv`
+directly called `renderTv` before the household state existed. That threw and stopped the page at
+"connecting…". It is fixed, and a test covers it. The views were checked at 1440px and 520px
+(headless Edge cannot go narrower).
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

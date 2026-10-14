@@ -265,6 +265,54 @@ describe("the console page holds together", () => {
     assert.match(render, /esc\(i\.name\)/);
   });
 
+  it("is organised as views, with the household first and the chat beside every view", () => {
+    for (const view of ["home", "record", "rules", "compare", "tv", "talk", "demo"]) {
+      assert.match(html, new RegExp(`class="[^"]*view[^"]*" data-view="${view}"`), `no ${view} view`);
+    }
+    assert.match(html, /<body data-view="home">/);
+    // Home comes first in the markup, and starts with what needs the household.
+    assert.ok(html.indexOf('data-view="home"') < html.indexOf('data-view="record"'));
+    assert.ok(html.indexOf('id="pending"') < html.indexOf('id="hhItems"'), "what needs you comes before the item list");
+  });
+
+  it("keeps the demo machinery out of the product unless presenter mode is on", () => {
+    // The tour, the Demo view and the clock controls are presenter-only.
+    assert.match(html, /<section class="dock presenter-only"/);
+    assert.match(html, /data-tab="demo" class="presenter-only"/);
+    for (const id of ["hhFwd1", "hhFwd7"]) assert.match(html, new RegExp(`class="small demo-only" id="${id}"`));
+    assert.match(html, /body:not\(\.presenter\) \.presenter-only, body:not\(\.presenter\) \.demo-only \{ display: none !important; \}/);
+    const code = withoutComments(scriptBody());
+    // On for a recording with ?presenter=1, and from Home's "Take the tour".
+    assert.match(code, /get\("presenter"\) === "1"/);
+    assert.match(code, /\$\("tourStart"\)\.addEventListener\("click", \(\) => \{\s*setPresenter\(true\)/);
+  });
+
+  it("never scrolls to something hidden in another view", () => {
+    // Every jump to an element switches to its view first.
+    const code = withoutComments(scriptBody());
+    const raw = code.match(/scrollIntoView\(\{ block: "center"/g) ?? [];
+    assert.equal(raw.length, 1, "only reveal() itself may scroll to centre");
+    assert.match(code, /function reveal\(el\) \{[\s\S]*?el\.closest\("\.view"\)/);
+  });
+
+  it("shows a held purchase once on Home, not twice", () => {
+    assert.match(withoutComments(scriptBody()), /\.filter\(\(n\) => n && n\.cls !== "held"\)/);
+  });
+
+  it("draws the TV view only once the household has loaded, and drives it with a D-pad", () => {
+    const code = withoutComments(scriptBody());
+    // Opening #tv directly used to call renderTv before `hh` existed, which
+    // threw and stopped the page at "connecting…".
+    assert.match(code, /if \(view === "tv" && tvReady\) renderTv\(\);/);
+    assert.match(code, /tvReady = true;\s*if \(document\.body\.dataset\.view === "tv"\) renderTv\(\);/);
+    for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Escape"]) assert.ok(code.includes(key), key);
+    // It says what it is.
+    assert.match(code, /TV layout · ← ↑ ↓ → to move/);
+    assert.match(html, /The TV view is a TV-layout web page, not a native Fire TV app/);
+    const tv = /function renderTv\(\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.ok(!/\$\{(item\.name|v\.decision\.product)\}/.test(tv), "TV text is escaped");
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);
