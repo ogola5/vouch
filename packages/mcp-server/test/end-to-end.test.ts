@@ -159,6 +159,22 @@ describe("tool annotations, as a client receives them (T2)", () => {
   });
 });
 
+describe("typed results (T3)", () => {
+  it("declares an outputSchema on the tools a client acts on, and returns matching structuredContent", async () => {
+    const { tools } = await rig.client.listTools();
+    const typed = tools.filter((t) => t.outputSchema).map((t) => t.name).sort();
+    assert.deepEqual(typed, ["explain_vouch", "list_mandates", "list_vouches", "propose_purchase", "record_dispute", "search_catalog"]);
+
+    // The SDK client validates structuredContent against the schema on every call;
+    // these read the typed fields directly, as a client would.
+    const catalog = await rig.client.callTool({ name: "search_catalog", arguments: { query: "detergent" } });
+    const products = (catalog.structuredContent as { products: { product_id: string; price: number }[] }).products;
+    assert.ok(products.length > 0 && products.every((p) => typeof p.price === "number"));
+    // The text is unchanged for clients that read text.
+    assert.deepEqual(JSON.parse((catalog.content as { text: string }[])[0]!.text), products);
+  });
+});
+
 describe("search_catalog — the tool the first live agent run proved was missing", () => {
   it("returns real, usable product ids", async () => {
     const products = await call<{ product_id: string; brand: string; price: number }[]>(
@@ -312,6 +328,9 @@ describe("the demo script, over the wire", () => {
     assert.match(explanation, /price > max_price/);
     // W6: the answer says who wrote it. No model in this rig, so: fixed wording.
     assert.match(explanation, /\n\(Fixed wording from the record\.\)$/);
+    // T3: and says it as a typed field, too.
+    const typed = await rig.client.callTool({ name: "explain_vouch", arguments: { vouch_id: result.vouch.vouch_id } });
+    assert.equal((typed.structuredContent as { source: string }).source, "rules");
   });
 
   it("5. a dispute visibly tightens the mandate and changes the next decision", async () => {

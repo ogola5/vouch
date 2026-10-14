@@ -57,7 +57,12 @@ export async function probeMcp(url: string): Promise<ProbeReport> {
     add("discover the tools", tools.includes("propose_purchase"), tools.join(", "));
     add("no tool can widen the agent's own authority", widening.length === 0, widening.length ? `found: ${widening.join(", ")}` : "none to approve, complete a checkout or raise a limit");
 
-    const mandates = JSON.parse(textOf(await client.callTool({ name: "list_mandates", arguments: {} }))) as { mandate_id: string }[];
+    // Typed results (T3): read structuredContent, which the client has
+    // already validated against the tool's declared outputSchema.
+    const listed = await client.callTool({ name: "list_mandates", arguments: {} });
+    const mandates = (listed.structuredContent as { mandates: { mandate_id: string }[] }).mandates;
+    const typed = (await client.listTools()).tools.filter((t) => t.outputSchema).map((t) => t.name);
+    add("typed results, declared up front", typed.includes("propose_purchase"), `outputSchema on: ${typed.join(", ")}`);
     if (!mandates.some((m) => m.mandate_id === PROBE_MANDATE)) {
       const created = await client.callTool({
         name: "create_mandate",
@@ -85,7 +90,9 @@ export async function probeMcp(url: string): Promise<ProbeReport> {
         reason: ["probe"],
       },
     });
-    const result = proposed.isError ? null : (JSON.parse(textOf(proposed)) as { outcome: string; session_status: string; vouch: { vouch_id: string; authority: { triggered_rules: string[] } } });
+    const result = proposed.isError
+      ? null
+      : (proposed.structuredContent as { outcome: string; session_status: string; vouch: { vouch_id: string; authority: { triggered_rules: string[] } } });
     add(
       "ask for the $27.80 Brand C, claiming 0.99 confidence",
       result?.outcome === "held_for_approval" && result.session_status === "ready_for_complete",

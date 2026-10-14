@@ -52,6 +52,35 @@ function json(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
 }
 
+/*
+ * Structured outputs (BUILD_PLAN.md T3). For the tools whose results a client
+ * acts on, the result is ALSO returned as typed `structuredContent` matching a
+ * declared `outputSchema` — so a client reads `outcome` instead of parsing
+ * JSON out of a sentence, and both ends validate it. The text stays exactly
+ * as it was, for clients that read text (the Strands agent, older clients).
+ *
+ * Record shapes name the fields a client relies on and allow the rest
+ * (passthrough), so adding a field to a Vouch never breaks the contract.
+ */
+function structured(data: object, textValue: unknown = data) {
+  return { ...json(textValue), structuredContent: data as Record<string, unknown> };
+}
+
+const VouchOut = z
+  .object({
+    vouch_id: z.string(),
+    action: z.object({ status: z.string(), ucp_session_id: z.string().nullable() }).passthrough(),
+    decision: z.object({ product: z.string(), price: z.number().nullable(), reason: z.array(z.string()) }).passthrough(),
+    authority: z
+      .object({ mandate_id: z.string(), within_bounds: z.boolean(), triggered_rules: z.array(z.string()) })
+      .passthrough(),
+  })
+  .passthrough();
+
+const MandateOut = z
+  .object({ mandate_id: z.string(), goal: z.string(), confidence_threshold: z.number(), status: z.string() })
+  .passthrough();
+
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return { content: [{ type: "text" as const, text: message }], isError: true };
@@ -146,8 +175,16 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
 
   server.registerTool(
     "list_mandates",
-    { title: "List mandates", annotations: HINTS.list_mandates, description: "Every mandate this household has set, oldest first." },
-    async () => json(service.listMandates())
+    {
+      title: "List mandates",
+      annotations: HINTS.list_mandates,
+      description: "Every mandate this household has set, oldest first.",
+      outputSchema: { mandates: z.array(MandateOut) },
+    },
+    async () => {
+      const mandates = service.listMandates();
+      return structured({ mandates }, mandates);
+    }
   );
 
   server.registerTool(
@@ -188,10 +225,16 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
           .optional()
           .describe("Optional filter matched against id, title and brand. Omit to list everything."),
       },
+      outputSchema: {
+        products: z.array(
+          z.object({ product_id: z.string(), title: z.string(), brand: z.string(), price: z.number(), currency: z.string() })
+        ),
+      },
     },
     async ({ query }) => {
       try {
-        return json(await service.searchCatalog(query));
+        const products = await service.searchCatalog(query);
+        return structured({ products }, products);
       } catch (error) {
         return failure(error);
       }
@@ -236,6 +279,16 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
           .array(z.string())
           .describe('Why you chose this, e.g. ["price_drop", "preferred_brand"]'),
       },
+      outputSchema: {
+        outcome: z.enum(["completed", "held_for_approval"]),
+        /** "completed", or "ready_for_complete" for a held purchase: one call short of an order. */
+        session_status: z.string(),
+        explanation: z.string(),
+        vouch: VouchOut,
+        evaluation: z
+          .object({ withinBounds: z.boolean(), requiresApproval: z.boolean(), triggeredRules: z.array(z.string()) })
+          .passthrough(),
+      },
     },
     async (args, extra) => {
       try {
@@ -243,7 +296,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
         // accepts an internal `household` context ("the forecast says we need
         // this") that only HouseholdAgent may set. An agent must not be able
         // to claim it, even if a schema change ever stopped stripping extras.
-        return json(
+        return structured(
           await service.proposePurchase({
             mandate_id: args.mandate_id,
             product_id: args.product_id,
@@ -295,10 +348,17 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
         vouch_id: z.string(),
         reason: z.string().optional(),
       },
+      outputSchema: {
+        threshold_before: z.number(),
+        threshold_after: z.number(),
+        rationale: z.string(),
+        vouch: VouchOut,
+        mandate: MandateOut,
+      },
     },
     async (args) => {
       try {
-        return json(await service.recordDispute(args));
+        return structured(await service.recordDispute(args));
       } catch (error) {
         return failure(error);
       }
@@ -322,8 +382,12 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
         since: z.string().optional().describe("ISO 8601 lower bound on created_at"),
         limit: z.number().int().positive().max(500).optional(),
       },
+      outputSchema: { vouches: z.array(VouchOut) },
     },
-    async (args) => json(service.listVouches(args))
+    async (args) => {
+      const vouches = service.listVouches(args);
+      return structured({ vouches }, vouches);
+    }
   );
 
   server.registerTool(
@@ -335,6 +399,12 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
         'Plain-language account of one action — answers "why did you buy this" and "why didn\'t ' +
         'you buy the $27 one". For a held purchase it names the boundary that stopped it.',
       inputSchema: { vouch_id: z.string() },
+      outputSchema: {
+        text: z.string(),
+        /** Who wrote it: the model (checked against the record) or the fixed wording. */
+        source: z.enum(["model", "rules"]),
+        fallback_reason: z.string().optional(),
+      },
     },
     async ({ vouch_id }) => {
       try {
@@ -347,7 +417,10 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
             : e.fallback_reason
               ? `(Fixed wording from the record — the model's text was set aside: ${e.fallback_reason}.)`
               : "(Fixed wording from the record.)";
-        return { content: [{ type: "text" as const, text: e.text }, { type: "text" as const, text: source }] };
+        return {
+          content: [{ type: "text" as const, text: e.text }, { type: "text" as const, text: source }],
+          structuredContent: { text: e.text, source: e.source, ...(e.fallback_reason ? { fallback_reason: e.fallback_reason } : {}) },
+        };
       } catch (error) {
         return failure(error);
       }

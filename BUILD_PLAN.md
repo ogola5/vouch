@@ -974,6 +974,18 @@ tools.ts). Only `propose_purchase` is destructive. It is also open-world and not
 one a client should confirm with a person. The read tools say read-only. A test checks the
 annotations as a client receives them over MCP, including that nothing else is destructive.
 
+**T3 DONE 2026-10-14.** Six tools declare an `outputSchema` and return matching
+`structuredContent`: propose_purchase, record_dispute, explain_vouch, search_catalog, list_vouches
+and list_mandates.
+- **The schemas:** Vouch and mandate shapes name the fields a client relies on and allow the rest
+  (passthrough), so adding a field never breaks the contract.
+- **Compatibility:** the text output is unchanged, so the Strands agent and the console are
+  untouched.
+- **Validation:** the SDK's MCP client validates `structuredContent` against the schema on every
+  call. Every MCP test (end-to-end, the security matrix, the probe) now exercises the schemas
+  against real results.
+- **The probe:** it now reads the typed results, as an outside client would.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".
