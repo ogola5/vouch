@@ -98,6 +98,21 @@ describe("the record as MCP resources (T4)", () => {
     assert.ok(templates.resourceTemplates.some((t) => t.uriTemplate === "vouch://records/{vouch_id}"));
   });
 
+  it("serves a mandate as an AP2 Intent Mandate, read-only (Q1)", async () => {
+    const client = await connect("ap2-reader");
+    const r = await client.readResource({ uri: "vouch://ap2/intent-mandates/m_detergent" });
+    const x = JSON.parse((r.contents[0] as { text: string }).text) as {
+      intent_mandate: { natural_language_description: string; user_cart_confirmation_required: boolean };
+      vouch_extension: { max_price: number };
+    };
+    assert.match(x.intent_mandate.natural_language_description, /at most \$15\.00/);
+    assert.equal(x.intent_mandate.user_cart_confirmation_required, true);
+    assert.equal(x.vouch_extension.max_price, 15);
+    // A resource, not a tool: the agent's tool surface is unchanged.
+    const { tools } = await client.listTools();
+    assert.ok(!tools.some((t) => /ap2/i.test(t.name)));
+  });
+
   it("refuses a request without a session, and a session that does not exist", async () => {
     const noSession = await fetch(url, {
       method: "POST",

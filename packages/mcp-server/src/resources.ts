@@ -1,5 +1,6 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SubscribeRequestSchema, UnsubscribeRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { toAp2IntentMandate } from "@vouch/shared";
 import type { RecordChange, VouchService } from "./service.ts";
 
 /**
@@ -59,6 +60,22 @@ export function registerVouchResources(server: McpServer, service: VouchService,
       const mandate = service.getMandate(String(mandate_id));
       if (!mandate) throw new Error(`No mandate "${String(mandate_id)}"`);
       return body(uri.href, mandate);
+    }
+  );
+
+  // Q1: the same mandate in AP2's Intent Mandate shape, plus what AP2 has no field for.
+  server.registerResource(
+    "ap2-intent-mandate",
+    new ResourceTemplate("vouch://ap2/intent-mandates/{mandate_id}", { list: undefined }),
+    {
+      title: "As an AP2 Intent Mandate",
+      description: "This mandate in the shape AP2 defines, with what AP2 cannot express kept beside it.",
+      mimeType: JSON_TYPE,
+    },
+    async (uri, { mandate_id }) => {
+      const mandate = service.getMandate(String(mandate_id));
+      if (!mandate) throw new Error(`No mandate "${String(mandate_id)}"`);
+      return body(uri.href, toAp2IntentMandate(mandate, service.currentTime()));
     }
   );
 

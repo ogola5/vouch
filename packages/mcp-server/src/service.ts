@@ -256,6 +256,11 @@ export class VouchService {
     this.now = now;
   }
 
+  /** The household's "now" — for anything that dates itself, like an AP2 export's expiry. */
+  currentTime(): Date {
+    return this.now();
+  }
+
   setDisputeListener(listener: (disputed: { vouch: Vouch; mandate: Mandate }) => void): void {
     this.onDisputeRecorded = listener;
   }

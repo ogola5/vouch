@@ -443,6 +443,11 @@
   .term { font-size: 12.5px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 9px; }
   .term b { font-weight: 650; }
   .meter-wrap { margin-top: 6px; }
+  details.ap2 { margin-top: 10px; font-size: 13px; }
+  details.ap2 > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 12.5px; }
+  .ap2-json { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; background: var(--sunk);
+              border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; margin: 4px 0 8px; }
+  .ap2-map { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
   .careful { font-size: 16px; font-weight: 650; color: var(--ok); }
   .careful.tight { color: var(--hold); }
   .careful + .meter-top .threshold { font-size: 20px; }
@@ -1623,12 +1628,36 @@ function renderMandates() {
           <span class="meta">Asks you first when:</span>
           ${(m.requires_approval_if ?? []).map((r) => `<span class="chip">${esc(ruleText(r))}</span>`).join("")}
         </div>
+        <details class="ap2" data-ap2="${esc(m.mandate_id)}">
+          <summary>As an AP2 Intent Mandate</summary>
+          <div class="ap2-body"><div class="meta">loading…</div></div>
+        </details>
         <div class="actions">
           <button class="small" data-edit="${esc(m.mandate_id)}">Edit</button>
           <button class="small" data-pause="${esc(m.mandate_id)}" data-paused="${paused}">${paused ? "Resume" : "Pause"}</button>
         </div>
       </div>`;
   }).join("");
+
+  // Q1: fetched when opened — the same mandate in AP2's shape, read over MCP.
+  el.querySelectorAll("details[data-ap2]").forEach((d) => d.addEventListener("toggle", async () => {
+    if (!d.open || d.dataset.loaded) return;
+    const slot = d.querySelector(".ap2-body");
+    try {
+      const x = await api(`/api/ap2/${encodeURIComponent(d.dataset.ap2)}`);
+      d.dataset.loaded = "1";
+      slot.innerHTML = `
+        <p class="meta">AP2 standardizes how an agent proves it was authorized. Here is this mandate in AP2's own
+          Intent Mandate fields — and, beside it, what AP2 has no field for: a price ceiling, and the trust that
+          moves when you dispute something. That part is Vouch.</p>
+        <div class="decided-h">AP2 Intent Mandate</div>
+        <pre class="ap2-json">${esc(JSON.stringify(x.intent_mandate, null, 2))}</pre>
+        <div class="decided-h">Not representable in AP2 — kept by Vouch</div>
+        <pre class="ap2-json">${esc(JSON.stringify(x.vouch_extension, null, 2))}</pre>
+        <div class="decided-h">How each field was filled</div>
+        <ul class="ap2-map">${x.mapping.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>`;
+    } catch (e) { slot.innerHTML = `<div class="meta">Couldn't load it: ${esc(e.message)}</div>`; }
+  }));
 
   // Animate from the last value seen to the new one, so a dispute visibly MOVES the bar.
   el.querySelectorAll("[data-meter]").forEach((bar) => {

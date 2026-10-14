@@ -444,6 +444,14 @@ describe("the console page holds together", () => {
     assert.match(handle, /await decline\(held\.vouch_id\)/);
   });
 
+  it("shows each mandate as an AP2 Intent Mandate, escaped, with what AP2 can't express (Q1)", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /<details class="ap2" data-ap2="\$\{esc\(m\.mandate_id\)\}">/);
+    assert.match(code, /api\(`\/api\/ap2\/\$\{encodeURIComponent\(d\.dataset\.ap2\)\}`\)/);
+    assert.match(code, /\$\{esc\(JSON\.stringify\(x\.intent_mandate, null, 2\)\)\}/);
+    assert.match(code, /Not representable in AP2/);
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);

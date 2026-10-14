@@ -117,6 +117,13 @@ export class VouchBridge {
     return tools.map((t) => t.name);
   }
 
+  /** Reads an MCP resource's text (Q1: the AP2 export is a resource, not a tool). */
+  async readResourceText(uri: string): Promise<string> {
+    const result = await this.withSession(() => this.client.readResource({ uri }));
+    const first = result.contents[0] as { text?: string } | undefined;
+    return first?.text ?? "";
+  }
+
   /** Raw call — text content joined, with the tool's own error flag preserved. */
   async callTool(name: string, args: Record<string, unknown>): Promise<ToolTextResult> {
     const result = await this.withSession(() => this.client.callTool({ name, arguments: args }));

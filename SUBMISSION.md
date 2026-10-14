@@ -66,7 +66,11 @@ What no one gives a *household* is the thing between "set and forget" and "do it
 | **A dispute changes what it may do next** | not publicly described | — | not described | **✓, and re-checkable** |
 
 We don't claim to have invented mandates, spending limits or audit trails. AP2, Mastercard and
-ACP came first. Vouch is what a household needs on top of them.
+ACP came first. Vouch is what a household needs on top of them, and we show it:
+- **Every Vouch mandate exports as an AP2 Intent Mandate**, using AP2's own six fields, taken from
+  its SDK.
+- **AP2's Intent Mandate has no price field and nothing that changes after a dispute.** So the
+  export keeps the ceiling, and the trust that moves, beside it. That part is Vouch.
 
 ## Evidence, not adjectives
 

@@ -152,6 +152,18 @@ export function createWebApp(options: WebAppOptions): {
       return;
     }
 
+    // Q1: a mandate as an AP2 Intent Mandate — read through MCP, like everything else here.
+    if (method === "GET" && path.startsWith("/api/ap2/")) {
+      const mandateId = decodeURIComponent(path.slice("/api/ap2/".length));
+      try {
+        const text = await bridge.readResourceText(`vouch://ap2/intent-mandates/${encodeURIComponent(mandateId)}`);
+        sendJson(res, 200, JSON.parse(text));
+      } catch (error) {
+        sendJson(res, 404, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
     if (method === "GET" && path === "/api/health") {
       await bridge.connect();
       sendJson(res, 200, {

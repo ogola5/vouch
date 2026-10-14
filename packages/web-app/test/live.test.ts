@@ -115,5 +115,12 @@ describe("the console, live (T4)", () => {
     await Promise.race([heard, new Promise((r) => setTimeout(r, 3000))]);
     controller.abort();
     assert.match(seen, /event: record/, `the page was not told: ${JSON.stringify(seen)}`);
+
+    // Q1: the console reads the AP2 export through MCP, and a missing mandate is a 404.
+    const ap2 = await fetch(`${web.url}/api/ap2/m_live`);
+    assert.equal(ap2.status, 200);
+    const x = (await ap2.json()) as { intent_mandate: { natural_language_description: string } };
+    assert.match(x.intent_mandate.natural_language_description, /at most \$15\.00/);
+    assert.equal((await fetch(`${web.url}/api/ap2/nope`)).status, 404);
   });
 });
