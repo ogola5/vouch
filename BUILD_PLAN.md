@@ -947,6 +947,28 @@ better and more engaging").
   the demo a dispute appeared *before* the purchase it disputed. The service now passes the
   household clock, and a test asserts a dispute is never dated before its purchase.
 
+**Technical depth T1–T5, approved by the owner 2026-10-14**, for the Tech Implementation criterion.
+A check that day: the installed MCP SDK (1.30) supports tool annotations, structured outputs,
+resources with change notifications, elicitation and prompts. Vouch used only plain tools, and
+there was no CI.
+- **T1 — CI:** a GitHub Actions workflow that typechecks and tests every push, with a badge in the
+  README.
+- **T2 — MCP tool annotations** on all 9 tools: read-only, destructive, idempotent, open-world.
+- **T3 — Structured outputs:** an `outputSchema` and `structuredContent` for the tools whose
+  results agents parse. The text stays, for older clients.
+- **T4 — MCP resources and live notifications:** records, mandates and the pantry become
+  addressable resources, and subscribers are notified when a purchase is held.
+- **T5 — A README "How it works" section:** an architecture diagram and the sequence of one held
+  purchase.
+- *Not now:* elicitation (depends on client support), and AgentCore Runtime (needs AWS access).
+- *Constraint on all of them:* no change to the gate or to which tools exist. The security matrix
+  and the "no tool can approve" test must still pass untouched.
+
+**T1 DONE 2026-10-14.** `.github/workflows/ci.yml` runs Node 24, `npm ci`, the typecheck and
+`npm test` on every push to main and every PR, with no secrets. The README has the badge.
+Rehearsed on a clean clone (no node_modules, dist or .env): 348 pass, 0 fail, 9 live tests skipped.
+It runs on GitHub from the next push.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

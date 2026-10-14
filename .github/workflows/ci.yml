@@ -1,0 +1,29 @@
+# Typecheck and test every push and pull request.
+#
+# No secrets: the model-backed tests (npm run test:live) skip themselves
+# without AWS_BEARER_TOKEN_BEDROCK, so CI proves everything that does not
+# need a model — the gate, the record, the security matrix, the published
+# numbers (claims.test.ts) — on a clean machine.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

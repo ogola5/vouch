@@ -1,5 +1,7 @@
 # Vouch
 
+[![CI](https://github.com/ogola5/vouch/actions/workflows/ci.yml/badge.svg)](https://github.com/ogola5/vouch/actions/workflows/ci.yml)
+
 **The trust layer for what your AI agent actually did — not just what it says it will do.**
 
 Amazon Developer Hackathon 2026 ("Build, Ship, Shape") — primary track **Alexa+**, secondary
