@@ -302,7 +302,16 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     },
     async ({ vouch_id }) => {
       try {
-        return { content: [{ type: "text" as const, text: await service.explainVouch(vouch_id) }] };
+        const e = await service.explainVouch(vouch_id);
+        // The last line says who wrote it, so neither the household nor the
+        // chat can mistake a fixed template for a model, or the reverse.
+        const source =
+          e.source === "model"
+            ? "(Written by the model from this record's facts, and checked against them.)"
+            : e.fallback_reason
+              ? `(Fixed wording from the record — the model's text was set aside: ${e.fallback_reason}.)`
+              : "(Fixed wording from the record.)";
+        return { content: [{ type: "text" as const, text: e.text }, { type: "text" as const, text: source }] };
       } catch (error) {
         return failure(error);
       }

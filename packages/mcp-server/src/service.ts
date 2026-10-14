@@ -21,7 +21,7 @@ import {
   type NeedBasis,
   type ProductFit,
 } from "@vouch/household";
-import type { ReasoningProvider } from "@vouch/reasoning";
+import type { Explanation, ReasoningProvider } from "@vouch/reasoning";
 import type { PhysicalEvidenceProvider } from "@vouch/ring-integration";
 import type { MerchantClient, UcpCallIds } from "./merchantClient.ts";
 
@@ -65,6 +65,13 @@ export interface VouchServiceDeps {
   store: VouchStore;
   merchant: MerchantClient;
   reasoning: ReasoningProvider;
+  /**
+   * Writes the "why" when someone ASKS (explain_vouch, the console's "why?").
+   * Separate from `reasoning` so a model call never sits in the purchase path:
+   * a fast-forward through a month would otherwise wait on every one. When
+   * absent, `reasoning` explains. See BUILD_PLAN.md §3b W6.
+   */
+  explainer?: ReasoningProvider & { explain?: (input: { vouch: Vouch; mandate: Mandate }) => Promise<Explanation> };
   physicalEvidence: PhysicalEvidenceProvider;
   household?: HouseholdProfile;
   /**
@@ -203,6 +210,7 @@ export class VouchService {
   private readonly store: VouchStore;
   private readonly merchant: MerchantClient;
   private readonly reasoning: ReasoningProvider;
+  private readonly explainer: VouchServiceDeps["explainer"];
   private readonly physicalEvidence: PhysicalEvidenceProvider;
   private readonly household: HouseholdProfile;
   private onPurchaseCompleted: VouchServiceDeps["onPurchaseCompleted"];
@@ -231,6 +239,7 @@ export class VouchService {
     this.store = deps.store;
     this.merchant = deps.merchant;
     this.reasoning = deps.reasoning;
+    this.explainer = deps.explainer;
     this.physicalEvidence = deps.physicalEvidence;
     this.household = deps.household ?? DEMO_HOUSEHOLD;
     this.onPurchaseCompleted = deps.onPurchaseCompleted;
@@ -850,7 +859,7 @@ export class VouchService {
     this.store.tamperForDemo(vouchId, price);
   }
 
-  async explainVouch(vouchId: string): Promise<string> {
+  async explainVouch(vouchId: string): Promise<Explanation> {
     const vouch = this.store.getVouch(vouchId);
     if (!vouch) {
       throw new Error(`No vouch with id "${vouchId}"`);
@@ -859,7 +868,9 @@ export class VouchService {
     if (!mandate) {
       throw new Error(`No mandate with id "${vouch.authority.mandate_id}"`);
     }
-    return this.reasoning.explainVouch({ vouch, mandate });
+    if (this.explainer?.explain) return this.explainer.explain({ vouch, mandate });
+    const text = await (this.explainer ?? this.reasoning).explainVouch({ vouch, mandate });
+    return { text, source: "rules" };
   }
 
   /* ---------------------------------------------------------------------

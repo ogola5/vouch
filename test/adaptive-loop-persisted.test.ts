@@ -104,7 +104,7 @@ describe("the adaptive loop, end to end", () => {
     assert.match(dispute.rationale, /0\.85 -> 0\.88/);
 
     const held = await service.proposePurchase({ ...BORDERLINE });
-    const explanation = await service.explainVouch(held.vouch.vouch_id);
+    const { text: explanation } = await service.explainVouch(held.vouch.vouch_id);
     assert.match(explanation, /stopped before buying/i);
     assert.match(explanation, /below_confidence_threshold/);
 

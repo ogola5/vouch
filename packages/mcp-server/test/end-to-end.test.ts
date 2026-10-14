@@ -290,6 +290,8 @@ describe("the demo script, over the wire", () => {
     });
     assert.match(explanation, /stopped before buying/i);
     assert.match(explanation, /price > max_price/);
+    // W6: the answer says who wrote it. No model in this rig, so: fixed wording.
+    assert.match(explanation, /\n\(Fixed wording from the record\.\)$/);
   });
 
   it("5. a dispute visibly tightens the mandate and changes the next decision", async () => {

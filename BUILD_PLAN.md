@@ -763,6 +763,43 @@ the rule-based text as fallback. Threshold *adjustment* stays deterministic and 
 reproducible. *Done when:* live test shows a model-written explanation naming the record's actual
 rules and numbers; unit test shows the fallback when the model fails.
 
+**W6 BUILT 2026-10-14 — live proof BLOCKED by AWS account access.**
+
+What it does: `BedrockReasoningProvider` (packages/reasoning) writes the "why" on a Vouch, using
+Nova 2 Lite through the Converse API over plain fetch with a bearer key. No SDK and no npm
+dependency were added.
+- **Only when someone asks:** `explain_vouch`, and the console's "why?". It is a separate
+  `explainer` on VouchService. The purchase path and every threshold change stay on the rule-based
+  provider. A test proves the explainer is never called while buying or holding.
+- **Checked, not trusted (`checkExplanation`):**
+  - every number in the text must be in the record;
+  - it must name the price;
+  - a held purchase must say what stopped it, in words, and matching the product's own name
+    ("Brand C") doesn't count;
+  - no claim of delivery, "proof", or a purchase that didn't happen.
+- **On failure:** a failed check or any model error falls back to the rule-based text, with the
+  reason kept.
+- **Labelled:** the tool's last line, and the console's label, say which one wrote the answer.
+- **Cost:** answers are cached per record state.
+
+Unit tests (fake fetch) cover:
+- the request shape: URL, bearer header, and the facts sent;
+- the cache;
+- fallback on error, 500 and 403;
+- rejection of an invented number, a held purchase that doesn't say what stopped it, a claimed
+  delivery, and a claimed purchase;
+- the threshold is never delegated to the model.
+
+Live test: `packages/reasoning/test/explain-live.test.ts` (in `npm run test:live`). It covers 6
+kinds of record × 3 trials and requires at least 60% of the answers to be model-written and to
+pass the checks. **On 2026-10-14 every call returned `400 Error 002: Access to Bedrock models is
+not allowed for this account`.** `npm run check:model` returns the same for the existing chat
+agent, which passed 30/30 on 2026-09-28. This is an account-level change, not the new code. Until
+access is restored, the console's chat and model explanations are unavailable; the gate, the record,
+the household agent and the fixed-wording explanations all work. `mcp-server` now loads `.env` so
+the key reaches it. Its only variables are model keys and the Ring HMAC key, and real Ring still
+needs `RING_MODE=real`.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".
@@ -772,6 +809,10 @@ and each category's trust level, keyboard/D-pad navigable. **Labelled honestly a
 view, not a native Fire TV app** (owner may overrule: a native app costs ~2-3 days taken from here).
 
 **Freeze: 2026-10-13.** After this date, only fixes.
+
+**Freeze reopened 2026-10-14 by the owner** ("finish all the works remaining"). W6 and W8 were not
+built before the freeze. They are built now, one at a time, each tested and committed. The cost is
+about two days of the Oct 14–18 video window.
 
 **W9 — Verify every [reported] fact in §5c in a browser (½ day)** — Auto Buy's 24h cancel, the
 $12B figure — and update the README's real/simulated table.

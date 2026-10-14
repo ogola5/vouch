@@ -640,7 +640,7 @@
         <ul>
           <li>The merchant's catalog, and payment — no money moves</li>
           <li>The doorbell in this console (a real webhook receiver exists, off by default)</li>
-          <li>The written explanations and threshold rules — deterministic, not a model yet</li>
+          <li>The threshold rules — deterministic on purpose. A "why?" may be written by the model when one is configured; each says which wrote it</li>
           <li>Alexa+ itself — this chat stands in for it</li>
         </ul>
       </div>
@@ -1613,7 +1613,13 @@ async function explain(vouchId) {
   slot.innerHTML = '<div class="explain">looking it up…</div>';
   try {
     const { text } = await callTool("explain_vouch", { vouch_id: vouchId });
-    slot.innerHTML = `<div class="explain"><div class="eyebrow">From the record</div>${esc(text)}</div>`;
+    // The tool's last line says who wrote it: the model (checked against the
+    // record) or the fixed wording. Shown as the label, never dropped.
+    const lines = text.split("\n");
+    const source = lines.length > 1 && /^\(.*\)$/.test(lines.at(-1).trim()) ? lines.pop().trim().slice(1, -1) : "";
+    const byModel = /^Written by the model/.test(source);
+    slot.innerHTML = `<div class="explain"><div class="eyebrow">${byModel ? "In plain words — written by the model, checked against the record" : "From the record"}</div>${esc(lines.join("\n"))}
+      ${source ? `<div class="meta" style="margin-top:6px">${esc(source)}</div>` : ""}</div>`;
   } catch (e) { slot.innerHTML = `<div class="explain">${esc(e.message)}</div>`; }
   renderTour();
 }

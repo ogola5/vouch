@@ -197,7 +197,7 @@ describe("every attempt leaves a record — including the ones that go wrong", (
     assert.deepEqual(failed!.trace!.steps.map((s) => s.step), ["create", "update", "gate", "error"]);
     assert.ok(failed!.authority.checks!.every((c) => c.passed), "it was allowed — the store failed, not the gate");
     assert.equal(failed!.evidence.digital.order_id, null);
-    assert.match(await service.explainVouch(failed!.vouch_id), /Nothing was bought/);
+    assert.match((await service.explainVouch(failed!.vouch_id)).text, /Nothing was bought/);
   });
 
   it("never records a real order as Failed: a doorbell error keeps the order and says 'unconfirmed'", async () => {

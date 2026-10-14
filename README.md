@@ -44,7 +44,8 @@ is the clearest statement of what this project actually is.
 | Confidence the gate compares | Real and evidence-based: need × usual product × price against history, recorded on every Vouch. The agent's own claim can only lower it. The factor values are stated assumptions (`packages/household/src/confidence.ts`) |
 | Mock UCP merchant (`/checkout-sessions` lifecycle, `.well-known/ucp`) | Real spec-conformant shape — derived status, `Idempotency-Key`, `UCP-Agent` enforcement — with simulated checkout/payment. No payment is processed and no goods exist; completing a session mints an order id |
 | Ring webhook correlation | **Receiver real, deliveries simulated.** HMAC-SHA256 verification over the raw body, event parsing, classification (human/animal/vehicle) and time-window correlation are all real and tested, and run with `RING_MODE=real`. What has *not* happened is a delivery from Ring's servers: that needs partner account linking, which requires a sign-in and user-identity system this product deliberately does not have (`BUILD_PLAN.md` §7). `MockRingProvider` remains the default. Note that even a real webhook gives correlation against an expected window, never proof — Ring publishes no package-delivered event |
-| Explanation + confidence-threshold adjustment | Simulated for now (`RuleBasedReasoningProvider`) — real integration pending AWS Bedrock access |
+| Explanation when someone asks "why?" (`explain_vouch`) | **Real model, checked:** when a Bedrock key is set, `BedrockReasoningProvider` asks Nova 2 Lite to write it from the record's facts. The text is then checked against the record: every number must be in it, it must name the price and what stopped the purchase, and it must not claim a delivery or a purchase that didn't happen. Anything that fails, and any model error, falls back to fixed wording, and the console labels which one you're reading. **Live verification pending:** on 2026-10-14 the AWS account answered "Access to Bedrock models is not allowed for this account", so the live measurement has not run yet |
+| Explanations inside a purchase result, and every confidence-threshold change | Deterministic on purpose (`RuleBasedReasoningProvider`): the number that moves the agent's authority must be reproducible, and a purchase must never wait on a model or depend on one being up |
 | Alexa+ | Simulated via a web chat app (per track guidance — no real Alexa+ production access needed) |
 | Alexa+ as a *real add-on* (MCP Toolkit) | **Blocked, not skipped.** The Alexa AI CLI sits behind a private AWS CodeArtifact registry gated on Solutions Architect onboarding, and Alexa+ has no African marketplace. Attempted and recorded in `BUILD_PLAN.md` §7; the track explicitly permits simulating via a web app |
 | Fire TV dashboard | **Not built.** Planned as a TV-layout web view of the household (`BUILD_PLAN.md` §3b, W8), labelled as such — not a native Fire TV app. *(This row previously claimed a real React Native app; that was never true, corrected 2026-09-28.)* |
@@ -54,7 +55,7 @@ is the clearest statement of what this project actually is.
 ```
 packages/
   shared/             Mandate, Vouch, UCP types + the mandate gate (evaluateProposal) — done
-  reasoning/          ReasoningProvider interface + RuleBasedReasoningProvider stub — done
+  reasoning/          ReasoningProvider interface, RuleBasedReasoningProvider, BedrockReasoningProvider (explanations, checked)
   ring-integration/   PhysicalEvidenceProvider interface + MockRingProvider stub — done
   db/                 SQLite persistence for mandates/vouches/disputes — done
   mock-merchant/      UCP session lifecycle + /.well-known/ucp + demo price control — done

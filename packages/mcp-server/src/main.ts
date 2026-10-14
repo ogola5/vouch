@@ -1,5 +1,5 @@
 import { VouchStore } from "@vouch/db";
-import { RuleBasedReasoningProvider } from "@vouch/reasoning";
+import { BedrockReasoningProvider, RuleBasedReasoningProvider } from "@vouch/reasoning";
 import {
   MockRingProvider,
   RealRingProvider,
@@ -67,10 +67,26 @@ if (ringMode === "real") {
   });
 }
 
+/*
+ * W6: with a Bedrock key in .env, the model writes the "why" when someone
+ * asks — checked against the record, falling back to the rule-based text.
+ * The purchase path and every threshold change stay on `reasoning`.
+ */
+const bedrockKey = process.env.AWS_BEARER_TOKEN_BEDROCK?.trim();
+const explainer = bedrockKey
+  ? new BedrockReasoningProvider({
+      apiKey: bedrockKey,
+      modelId: process.env.BEDROCK_MODEL_ID?.trim() || "us.amazon.nova-2-lite-v1:0",
+      region: process.env.AWS_REGION?.trim() || "us-west-2",
+      fallback: reasoning,
+    })
+  : undefined;
+
 const service = new VouchService({
   store,
   merchant: new HttpMerchantClient(merchantUrl),
   reasoning,
+  explainer,
   physicalEvidence,
 });
 
@@ -137,7 +153,12 @@ if (allowedHosts.length > 0) {
 }
 console.log(`[mcp-server] merchant         ${merchantUrl}`);
 console.log(`[mcp-server] database         ${dbPath}`);
-console.log(`[mcp-server] reasoning        RuleBasedReasoningProvider (no model call)`);
+console.log(`[mcp-server] reasoning        RuleBasedReasoningProvider (purchase path and every threshold change — no model call)`);
+console.log(
+  `[mcp-server] explanations     ${
+    explainer ? `BedrockReasoningProvider ${explainer.modelId}, checked against the record, rule-based fallback` : "rule-based (no AWS_BEARER_TOKEN_BEDROCK in .env)"
+  }`
+);
 // Derived from the choice above rather than hardcoded. A banner that names
 // the wrong provider is worse than none: it is read during a demo and
 // believed, and this one claimed "Mock" while the real receiver was running.
