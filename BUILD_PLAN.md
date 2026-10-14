@@ -896,6 +896,17 @@ comparison narrated rather than real.
 - **Not verified here:** a real microphone in a real browser. The headless browser has none. This
   needs one try by the owner.
 
+**S3 DONE 2026-10-14 — an outside MCP client.**
+- **What it is:** `packages/mcp-server/src/probe.ts` (`probeMcp`), run with `npm run probe:mcp`.
+- **What it does:** connects with only the URL, reads the server's instructions, lists the tools,
+  checks there is no widening tool, makes its own mandate (`m_probe`), and asks for the $27.80
+  Brand C claiming 0.99 confidence. It is held, and the checkout stays at `ready_for_complete`.
+  It then tries `approve_purchase` ("Tool not found") and asks why.
+- **Run for real against a stack: 8/8 ✓.** The test runs it twice against a real server and checks
+  that nothing was bought.
+- **For the video:** run it in a terminal beside the console. The held record appears on the
+  household's Record view.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

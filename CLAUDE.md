@@ -43,6 +43,7 @@ npm run dev:all             # all three; console at http://localhost:4030 (local
 npm run dev:stop            # frees 4010/4020/4021/4030 — Ctrl+C on dev:all can leave orphans behind
 npm run dev:fresh           # dev:stop, delete the database, dev:all — a clean demo
 npm run test:live           # the model-backed tests (reads .env); npm test skips them
+npm run probe:mcp           # an outside MCP client vs the running server: held by the gate, can't approve itself
 ```
 
 ## Three Node 24 constraints that are not negotiable
