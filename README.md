@@ -11,6 +11,91 @@ See [`vouch-project-brief.md`](./vouch-project-brief.md) for the full pitch, the
 positioning against KYA/ACP/UCP, and the guardrails on what never to claim. See
 [`BUILD_PLAN.md`](./BUILD_PLAN.md) for the architecture, stack decisions, and week-by-week plan.
 
+## How it works
+
+**One rule shapes the whole design: the agent may do anything that cannot increase its own
+authority.** So the agent's surface (MCP) can propose, explain and narrow, but never approve or
+widen. Approving and widening live on a separate, loopback-only household surface that no model
+can reach, behind the household's passkey.
+
+```mermaid
+flowchart LR
+  subgraph agents["Anything that can act"]
+    A1["Strands agent, over MCP<br/>(Nova 2 Lite on Bedrock)"]
+    A2["Household agent, in-process<br/>(forecast: running low?)"]
+    A3["Any MCP client<br/>(Alexa+ position, probe:mcp)"]
+  end
+  subgraph vouch["Vouch MCP server"]
+    T["9 tools, annotated<br/>typed results"]
+    R["Resources + subscriptions<br/>vouch://records/waiting"]
+    G{{"The gate<br/>evaluateProposal"}}
+    E["Evidence-based confidence<br/>need × product × price"]
+    L[("Record: SQLite,<br/>hash-chained")]
+  end
+  subgraph house["Household surface — loopback only"]
+    H["Approve (passkey) · Keep blocked<br/>Dispute · Edit limits · Hand over"]
+  end
+  M["Merchant<br/>UCP checkout"]
+  RG["Ring webhook<br/>(correlation, never proof)"]
+  C["Console + TV view<br/>live via SSE"]
+
+  A1 & A3 --> T
+  A2 --> G
+  T --> G
+  E --> G
+  G -->|allowed: complete| M
+  G -->|held: no order| L
+  M --> L
+  RG --> L
+  L --> R
+  R -.->|resources/updated| A3
+  R -.->|live| C
+  C --> H --> L
+```
+
+**One held purchase, end to end.** The gate runs *on* the store's own checkout, between
+`ready_for_complete` and `completed`, so a stop leaves real evidence behind: a checkout one call
+short of an order.
+
+```mermaid
+sequenceDiagram
+  participant Ag as Agent (any MCP client)
+  participant V as Vouch MCP server
+  participant M as Merchant (UCP)
+  participant DB as Record (SQLite, chained)
+  participant D as Subscribed device / console
+  participant HH as Household (passkey)
+
+  Ag->>V: propose_purchase(Brand C, confidence 0.99)
+  V->>M: create checkout session
+  V->>M: update → ready_for_complete (price read from the merchant, not the agent)
+  V->>V: evidence confidence (agent's claim can only lower it)
+  V->>V: gate: $27.80 > $15 ✗ · new brand ✗ · confidence ✗
+  Note over V,M: completeSession is never called — asserted by gate-before-complete.test.ts
+  V->>DB: Vouch: PendingApproval, every check, the trace
+  V-->>D: notifications/resources/updated (vouch://records/waiting)
+  V->>Ag: held_for_approval · session ready_for_complete
+  Ag->>V: approve_purchase?
+  V-->>Ag: Tool not found (no tool can approve)
+  HH->>V: Approve — passkey signs this purchase + the record's chain head
+  V->>M: complete → order
+  V->>DB: Vouch: Complete, approval signature kept
+```
+
+**And when it gets it wrong:** "I didn't want that" → `record_dispute` → the item drops from Auto
+to Ask, and the confidence bar tightens by 0.03. Good behaviour later loosens it back toward the
+household's own number, and never past it. The console then re-runs the same gate on the same
+purchase to show *"today it would be held"*.
+
+| Where to look | What it proves |
+|---|---|
+| [`packages/shared/src/gate.ts`](packages/shared/src/gate.ts) | The gate: every check it runs, passes included |
+| [`packages/mcp-server/src/service.ts`](packages/mcp-server/src/service.ts) | The gate on the UCP transition; failures, declines, approvals and the re-check |
+| [`packages/mcp-server/src/tools.ts`](packages/mcp-server/src/tools.ts) · [`resources.ts`](packages/mcp-server/src/resources.ts) | The MCP surface: annotations, typed results, resources and subscriptions |
+| [`packages/mcp-server/test/gate-before-complete.test.ts`](packages/mcp-server/test/gate-before-complete.test.ts) | An out-of-bounds proposal never reaches `completeSession` |
+| [`packages/mcp-server/test/security-matrix.test.ts`](packages/mcp-server/test/security-matrix.test.ts) | 20 attacks over MCP, each blocked |
+| [`packages/eval/`](packages/eval/) | The simulations and the published numbers, pinned by `claims.test.ts` |
+
 ## A note on UCP, since the submission will be read by Amazon engineers
 
 UCP (Universal Commerce Protocol) is an **open standard**, not an Amazon specification. It was

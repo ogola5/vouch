@@ -109,7 +109,12 @@ drifts from them.
 
 - **`mcp-server`:** a self-hosted MCP server over Streamable HTTP, with the gate on the UCP
   checkout transition. The household's powers (approve, edit limits, hand an item over) live on a
-  separate, loopback-only surface that no model can reach.
+  separate, loopback-only surface that no model can reach. It uses MCP beyond plain tools:
+  - **tool annotations**: only `propose_purchase` is marked destructive;
+  - **typed results** (`outputSchema` / `structuredContent`);
+  - **resources with subscriptions**: a subscribed client, such as an Alexa+ device would be, is
+    told the moment the gate holds a purchase, without asking.
+- **CI:** typecheck and the full test suite run on every push.
 - **`orchestrator`:** a Strands agent on Amazon Bedrock, Nova 2 Lite, using only the MCP tools.
 - **`household`:** the forecast (a lognormal pace with an honest uncertainty range) and the
   evidence-based confidence. The agent's own confidence can only *lower* the number the gate

@@ -1032,6 +1032,17 @@ none.
   - the probe, 10/10 on the real stack, including "told without asking";
   - the existing suite passed unchanged with sessions, including the security matrix.
 
+**T5 DONE 2026-10-14 — T1–T5 COMPLETE.** The README has a "How it works" section:
+- the one rule ("the agent may do anything that cannot increase its own authority");
+- an architecture diagram and a sequence diagram of one held purchase. Both are Mermaid, so GitHub
+  draws them from text, with no dependency and no stale images. Checked against the code: the
+  household agent is in-process, and the floor applies to recovery;
+- a "where to look" table linking the gate, the MCP surface and the proving tests. All links
+  resolve.
+
+SUBMISSION.md describes the MCP depth and CI. **Not yet verified:** how GitHub renders the
+diagrams, which needs a push.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".
