@@ -212,6 +212,33 @@ describe("Auto Buy (W4): the README's comparison is what the simulation produces
   });
 });
 
+describe("the submission writeup quotes the same numbers (SUBMISSION.md)", () => {
+  // The writeup is what judges read; it must not drift from the evidence either.
+  const SUBMISSION = readFileSync(new URL("../../../SUBMISSION.md", import.meta.url), "utf8");
+  const restock = JSON.parse(readFileSync(new URL("../results/restock.json", import.meta.url), "utf8")) as RestockResult;
+  const s = restockSummary(restock);
+  const has = (text: string) => assert.ok(SUBMISSION.includes(text), `SUBMISSION.md should say "${text}"`);
+
+  it("quotes the adaptive loop's win and its cost, and the rejected tuning", () => {
+    has(`${lateHarmReduction(trial).toFixed(1)}%`);
+    has(`${(trial.adaptive.wantedHeld - trial.static.wantedHeld).toLocaleString("en-US")} wanted purchases`);
+    const aggressive = sweep.find((row) => row.disputeTightenStep === 0.07)!;
+    has(`${aggressive.harmReduction.toFixed(1)}%`);
+    has(`${aggressive.wantedCompletionRate.toFixed(1)}%`);
+  });
+
+  it("quotes the restocking and Auto Buy figures as the simulation produced them", () => {
+    has(`${Math.abs(s.forecast.stockoutDaysChange).toFixed(1)}%`);
+    has(`${Math.abs(s.forecast.stockHeldChange).toFixed(1)}%`);
+    has(`${Math.abs(s.forecast.packsChange).toFixed(1)}%`);
+    has(`${s.forecast.questionsPerHouseholdWeek.toFixed(1)} one-tap questions`);
+    const a = s.autoBuyVsForecast;
+    has(`${a.stockoutDaysTimes.toFixed(1)}×`);
+    has(`${(a.boughtByHousehold.autoBuy / a.boughtByHousehold.forecast).toFixed(1)}×`);
+    has(`${Math.abs(a.pricePaidChange).toFixed(1)}% less`);
+  });
+});
+
 describe("the sweep says what the README says it says", () => {
   it("includes a true control that neither helps nor costs", () => {
     const control = sweep.find((row) => row.disputeTightenStep === 0);

@@ -933,6 +933,27 @@ first-hand source; §5c holds the results. Outcomes:
 - **Dropped:** "up to 200 active requests", and Verifiable Intent's "new dispute grounds".
 - No user-facing text repeated a corrected claim.
 
+**W10 writeup DRAFTED 2026-10-14: `SUBMISSION.md`**, written for the judges. Its numbers are
+pinned by `claims.test.ts`, so it fails if they drift. Three `[OWNER: …]` markers remain: the
+real-people results, the Bedrock status, and the test count.
+
+**Video shot list (3 min), updated for S1–S3.** Record with `?presenter=1`, at 1440px, with voice
+on.
+1. **0:00–0:20, open on the novel part.** Home, after a dispute: "Then it bought this on its own.
+   Today the exact same purchase would be held — it now asks you first." One line of voiceover: its
+   dispute gets your money back; ours changes what it may do.
+2. **0:20–0:50, it buys on its own.** +1 day: the detergent is bought, "nobody asked", the
+   doorbell "corroborated, never proof", and "How it decided".
+3. **0:50–1:25, the gate holds.** *Speak*: "Buy the Brand C one." It's held, and the checkout is
+   parked at `ready_for_complete`. Press **Why?**; the answer is spoken.
+4. **1:25–1:50, only you can say yes.** The passkey prompt names the purchase. Keep blocked.
+5. **1:50–2:15, one sentence.** "I didn't want that detergent." Auto → Ask, and the "what your no
+   changed" card appears.
+6. **2:15–2:35, pluggable.** A terminal runs `npm run probe:mcp`. An outside client is held, and
+   "Tool approve_purchase not found".
+7. **2:35–2:50, vs Auto Buy.** Change the deal frequency: it runs out, then it stockpiles.
+8. **2:50–3:00, TV view and honesty.** The TV view, then the "What's real" footer, opened.
+
 **W10 — Video, writeup, developer feedback (2026-10-14 → 10-22).** The 3-minute video follows the
 demo script below. The writeup leads with the thesis above, cites AP2/Mastercard as the foundation,
 publishes the simulation's trade-off curve and the gate-discipline measurement, and states every
