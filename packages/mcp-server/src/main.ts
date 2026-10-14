@@ -143,7 +143,13 @@ const { url, householdUrl } = await startVouchHttpServer(port, {
   householdPort: Number(process.env.HOUSEHOLD_PORT ?? 4021),
   householdAgent,
   passkeys,
-  study: new Study(store),
+  /*
+   * Study answers live in their OWN file, not vouch.db. `npm run dev:fresh`
+   * deletes vouch.db to reset the demo between participants; with the
+   * answers in the same file, every reset erased the previous person's. Git
+   * ignores *.db, so participants' answers are never committed.
+   */
+  study: new Study(VouchStore.open(process.env.VOUCH_STUDY_DB ?? "study.db")),
 });
 
 console.log(`[mcp-server] Streamable HTTP  ${url}/mcp   (bound ${host})`);
@@ -153,6 +159,7 @@ if (allowedHosts.length > 0) {
 }
 console.log(`[mcp-server] merchant         ${merchantUrl}`);
 console.log(`[mcp-server] database         ${dbPath}`);
+console.log(`[mcp-server] study answers    ${process.env.VOUCH_STUDY_DB ?? "study.db"} (kept across dev:fresh)`);
 console.log(`[mcp-server] reasoning        RuleBasedReasoningProvider (purchase path and every threshold change — no model call)`);
 console.log(
   `[mcp-server] explanations     ${

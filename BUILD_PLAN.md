@@ -1084,6 +1084,24 @@ It is served as an MCP resource (`vouch://ap2/intent-mandates/{id}`, with no new
 `/api/ap2/:id`, and as a panel on each mandate in Rules. It is labelled as an export, not an AP2
 integration: nothing is signed or sent.
 
+**P1 DONE 2026-10-14.** SUBMISSION.md has a "Who it's for, and how it would ship" section:
+- the customer: a household, at two moments ("about to run out" and "it bought something we
+  didn't want");
+- why now, using only verified figures (Rufus's $12B and 300M+; Alexa+ free with Prime);
+- three ways it could ship, labelled as our proposal: an Alexa+ add-on, in front of any UCP
+  merchant, or inside Amazon's own flow;
+- what stays hard: unobserved consumption, Ring is only correlation, the cost of each "may I?",
+  multi-person households, and liability;
+- what a pilot would measure.
+
+**P2 DONE 2026-10-14.** `docs/study-kit.md`: setup, who to ask, a recruiting message, a neutral
+facilitator script, what not to say, and how to report, including "never round n up".
+- **Found while writing it:** `dev:fresh` deletes vouch.db, and the study answers lived in it. A
+  reset between participants would have erased each person's answers.
+- **Fixed:** answers now live in their own `study.db` (`VOUCH_STUDY_DB`), which git ignores.
+  Proven on the real server: an answer survives deleting the main database and restarting, and
+  the household starts fresh.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".
