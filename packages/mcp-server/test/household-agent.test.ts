@@ -278,6 +278,15 @@ describe("modes: what the household has handed over, per item", () => {
     const detergent = item(r, "detergent");
     assert.equal(detergent.autonomy?.mode, "ask");
     assert.match(detergent.settings.lastModeChange!.why, /disputed/);
+
+    // S1: the same purchase, re-checked against today's rules, would now be
+    // held — because it no longer may buy on its own. The demo's story, asserted.
+    const r2 = r.service.recheckToday(bought.vouch_id);
+    assert.equal(r2.then.held, false);
+    assert.equal(r2.today!.held, true);
+    assert.equal(r2.today!.mode, "ask");
+    // It passed then (as "autonomy") and fails today: one check, not a new one.
+    assert.ok(r2.changed.some((c) => c.rule === "autonomy_not_granted" && c.then === true && c.today === false), JSON.stringify(r2.changed));
   });
 
   it("expires: Auto with an end date steps down to Ask by itself", async () => {

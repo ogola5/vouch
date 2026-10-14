@@ -833,6 +833,56 @@ directly called `renderTv` before the household state existed. That threw and st
 "connecting…". It is fixed, and a test covers it. The views were checked at 1440px and 520px
 (headless Edge cannot go narrower).
 
+**Strengtheners, approved by the owner 2026-10-14** ("strengthen the issues … make it hard,
+competitive and novel"). They come from a weakness review done the same day. Bedrock is blocked
+account-wide (Error 002 in every region; the key itself is valid), and the owner is fixing that in
+the AWS console.
+- **S1 — "What your no changed":** re-check a disputed purchase against today's mandate, with no
+  checkout, and show before → after. It makes the adaptive loop concrete instead of a threshold
+  number.
+- **S2 — Voice for the Alexa+ stand-in:** the browser's built-in speech in and out, and replies
+  trimmed for listening. No dependency.
+- **S3 — A second, independent MCP client:** a script that connects to the server cold, proving
+  the integration is pluggable rather than wired to this console.
+- **S4 — W9 fact check**, then **S5 — the writeup draft (W10)**.
+- *Owner's:* real people (W7), one real Ring event (`npm run ring:capture`), Bedrock access.
+- *Roadmap only:* a second household member, who can ask but not approve.
+
+**S1 trade-off (before code; touches `shared`, `mcp-server` and `web-app`).**
+
+*Reason.* "Trust that adapts" is the one idea nobody else describes. On screen it was a threshold
+moving 0.85 → 0.88, which a household cannot feel. Re-running the gate on the *same* purchase
+against *today's* mandate turns it into a fact: "then: bought on its own; today: would be held,
+because it now asks you first."
+
+*Risk.* The record never kept the proposed brand and quantity, so an old purchase cannot be
+re-checked faithfully. Guessing them, for example assuming the preferred brand, would make the
+comparison narrated rather than real.
+
+*Mitigation.*
+- New Vouches record `proposal: {brand, quantity}`. It is additive and nullable, so old records
+  still parse.
+- The re-check is a pure call to the same `evaluateProposal` the gate uses, against the stored
+  price and confidence, at the household's current time. There is no checkout and no record.
+- A record without `proposal` answers "can't re-check: recorded before this existed" instead of
+  guessing.
+- It is read-only on the household surface, with no new MCP tool.
+
+**S1 DONE 2026-10-14.**
+- **The pieces:** `Vouch.proposal` holds the brand and quantity. `VouchService.recheckToday`
+  re-runs the gate. `GET /household/vouches/:id/recheck` serves it.
+- **On screen:** a "What your 'no' changed" card on every disputed record, and as a Home block
+  under "Waiting for you". The tour's step 6 points at it.
+- **Tests:**
+  - a re-check after a dispute agrees with a real second proposal (held, same rule);
+  - the re-check writes no record and places no order;
+  - a record without `proposal` is refused, not guessed at;
+  - the household-agent path, which is the demo's own story: a detergent bought on its own,
+    disputed, then "would be held, it now asks you first".
+- **Found by rendering it:** the gate names one check `autonomy`, `autonomy_expired` or
+  `autonomy_not_granted`, so the card first said the check was "not checked then". Checks are now
+  compared by family.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

@@ -134,6 +134,29 @@ export interface CreateMandateInput {
   autonomy?: Mandate["autonomy"];
 }
 
+/** The answer to "would it do the same today?" — see VouchService.recheckToday. */
+export interface Recheck {
+  vouch_id: string;
+  recheckable: boolean;
+  /** Why it could not be re-checked, when it could not. */
+  reason?: string;
+  then: {
+    status: Vouch["action"]["status"];
+    held: boolean;
+    threshold: number | null;
+    checks: { rule: string; passed: boolean; detail: string }[];
+  };
+  today: {
+    held: boolean;
+    threshold: number;
+    mode: Mandate["autonomy"]["mode"];
+    triggered_rules: string[];
+    checks: { rule: string; passed: boolean; detail: string }[];
+  } | null;
+  /** The checks whose answer is different today. `then: null` means the check did not exist then. */
+  changed: { rule: string; then: boolean | null; today: boolean; detail: string }[];
+}
+
 export interface ProposePurchaseInput {
   mandate_id: string;
   /** Catalog id the merchant knows, e.g. "detergent-brand-a". */
@@ -579,6 +602,7 @@ export class VouchService {
         user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
         dispute: null,
         household: householdRecord,
+        proposal: { brand: input.brand, quantity: input.quantity },
         household_approval: null,
         trace: trace(),
         failure: null,
@@ -612,6 +636,7 @@ export class VouchService {
       thresholdApplied: mandate.confidence_threshold,
       confidenceBasis: basis,
       household: householdRecord,
+      proposal: { brand: input.brand, quantity: input.quantity },
       evaluation,
       trace: trace(),
     });
@@ -653,6 +678,7 @@ export class VouchService {
               delivery_day: input.household.delivery_day,
             }
           : null,
+        proposal: { brand: input.brand, quantity: input.quantity },
         household_approval: null,
         trace: { started_by: startedBy, mcp_request_id: input.origin?.mcp_request_id ?? null, steps },
         failure: { stage: progress.stage, message },
@@ -750,6 +776,7 @@ export class VouchService {
       thresholdApplied: held.authority.threshold_applied,
       confidenceBasis: held.authority.confidence_basis,
       household: held.household,
+      proposal: held.proposal,
       confidenceBand: held.confidence,
       evaluation: {
         withinBounds: true,
@@ -857,6 +884,72 @@ export class VouchService {
   /** DEMO CONTROL: see VouchStore.tamperForDemo. */
   tamperForDemo(vouchId: string, price: number): void {
     this.store.tamperForDemo(vouchId, price);
+  }
+
+  /**
+   * "What your no changed" (BUILD_PLAN.md S1): the same purchase — same
+   * price, brand, quantity, and the confidence the gate compared — put
+   * through the SAME gate against the mandate as it stands today. Pure: no
+   * checkout, no record, no change. Only the household's rules (and the
+   * clock) can differ, so any change in the answer is theirs.
+   *
+   * A record that never kept its brand and quantity is not re-checked: it
+   * says so, rather than guessing them.
+   */
+  recheckToday(vouchId: string): Recheck {
+    const vouch = this.store.getVouch(vouchId);
+    if (!vouch) throw new Error(`No vouch with id "${vouchId}"`);
+    const mandate = this.store.getMandate(vouch.authority.mandate_id);
+    if (!mandate) throw new Error(`No mandate with id "${vouch.authority.mandate_id}"`);
+
+    const then = {
+      status: vouch.action.status,
+      held: vouch.action.status === "PendingApproval" || vouch.action.status === "Cancelled" || (vouch.authority.triggered_rules ?? []).length > 0,
+      threshold: vouch.authority.threshold_applied,
+      checks: vouch.authority.checks ?? [],
+    };
+    const cannot = (reason: string): Recheck => ({ vouch_id: vouchId, recheckable: false, reason, then, today: null, changed: [] });
+    if (!vouch.proposal) return cannot("recorded before purchases kept their brand and quantity, so it can't be re-checked faithfully");
+    if (vouch.decision.price === null) return cannot("it never reached a priced checkout");
+    if (vouch.authority.confidence_score === null) return cannot("it did not keep the confidence the gate compared");
+
+    const evaluation = evaluateProposal(mandate, {
+      price: vouch.decision.price,
+      quantity: vouch.proposal.quantity,
+      brand: vouch.proposal.brand,
+      confidence: vouch.authority.confidence_score,
+      initiatedBy: vouch.household?.initiated_by === "forecast" ? "forecast" : "request",
+      at: this.now().toISOString(),
+    });
+
+    // The gate names one check three ways — "autonomy" (passed),
+    // "autonomy_expired", "autonomy_not_granted" — so compare by family, or
+    // a check that passed then reads as "not checked then". (Found by
+    // rendering the card.)
+    const family = (rule: string) => (rule.startsWith("autonomy") ? "autonomy" : rule);
+    const before = new Map(then.checks.map((c) => [family(c.rule), c.passed]));
+    const changed = evaluation.checks
+      .filter((c) => before.get(family(c.rule)) !== c.passed)
+      .map((c) => ({
+        rule: c.rule,
+        then: before.has(family(c.rule)) ? before.get(family(c.rule))! : null,
+        today: c.passed,
+        detail: c.detail,
+      }));
+
+    return {
+      vouch_id: vouchId,
+      recheckable: true,
+      then,
+      today: {
+        held: evaluation.requiresApproval,
+        threshold: mandate.confidence_threshold,
+        mode: mandate.autonomy.mode,
+        triggered_rules: evaluation.triggeredRules,
+        checks: evaluation.checks,
+      },
+      changed,
+    };
   }
 
   async explainVouch(vouchId: string): Promise<Explanation> {
@@ -969,6 +1062,8 @@ export class VouchService {
     thresholdApplied: number | null;
     confidenceBasis: ConfidenceBasis | null;
     household: HouseholdRecord;
+    /** Brand and quantity as proposed; carried over on approval. */
+    proposal: Vouch["proposal"];
     /** Given when approving, so the band is carried over rather than recomputed. */
     confidenceBand?: ConfidenceLevel;
     evaluation: MandateEvaluation;
@@ -1040,6 +1135,7 @@ export class VouchService {
       user_controls: ["explain", "dispute", "pause_mandate", "adjust_limit"],
       dispute: null,
       household: args.household,
+      proposal: args.proposal,
       household_approval: args.approval ?? null,
       trace: args.trace,
       failure: null,

@@ -57,6 +57,7 @@ function seedVouch(store: VouchStore, vouchId = "v1"): Vouch {
     confidence: "high",
     user_controls: ["explain", "dispute"],
     dispute: null,
+    proposal: null,
     household: null,
     household_approval: null,
     trace: null,

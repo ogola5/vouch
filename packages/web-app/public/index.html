@@ -133,6 +133,13 @@
            padding: 20px; box-shadow: var(--shadow); margin-bottom: 18px; }
   .block-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
   .block-head h2 { font-size: 19px; margin: 0; font-weight: 700; }
+  .changed { margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--accent);
+             background: var(--accent-bg); font-size: 14px; }
+  .changed .eyebrow { color: var(--accent); }
+  .changed-head { font-size: 15px; margin: 4px 0 6px; }
+  .changed ul { margin: 4px 0 8px; padding-left: 18px; }
+  .changed.muted { border-color: var(--line); background: var(--sunk); color: var(--muted); }
+  #changedBlock .changed { margin-top: 0; }
   .chat h3, .dock h3 { font-size: 15.5px; margin: 0; letter-spacing: -0.01em; }
   .view .vouch, .view .mandate { background: var(--panel); box-shadow: var(--shadow); }
   .view .vouch { margin-bottom: 12px; }
@@ -554,6 +561,13 @@
           </div>
           <div id="pending"></div>
           <div class="needs" id="hhNeeds"></div>
+        </section>
+
+        <section class="block" id="changedBlock" aria-labelledby="changedTitle" hidden>
+          <div class="block-head">
+            <h2 id="changedTitle">Your “no” changed what it may do</h2>
+          </div>
+          <div id="changedBody"></div>
         </section>
 
         <section class="block" id="hhPanel" aria-labelledby="hhTitle">
@@ -1074,6 +1088,7 @@ const BEATS = [
     watch: [
       "the chat step <b>tightened your mandate</b>",
       "the detergent card: <b>“Moved from Auto to Ask — you disputed a purchase it made”</b>",
+      "on Home: <b>Your “no” changed what it may do</b> — the same purchase, re-checked just now by the same gate: it would be held",
       "optional: replay a borderline purchase — it went through before; now it's held",
     ],
     diff: "Their dispute gets your money back. Ours changes what the agent is allowed to do next time — a trust relationship, not a log.",
@@ -1765,6 +1780,7 @@ function renderVouches() {
           ${v.action.status === "Complete" && !d ? `<button class="small" data-dispute-open="${v.vouch_id}">I didn't want that</button>` : ""}
         </div>
         <div data-dispute-slot="${v.vouch_id}"></div>
+        ${d ? `<div data-recheck-slot="${v.vouch_id}"></div>` : ""}
         <div data-explain-slot="${v.vouch_id}"></div>
       </div>`;
   }).join("");
@@ -1822,6 +1838,47 @@ function renderSelectors() {
 }
 
 /* ---------- actions ---------- */
+
+/* ---------- what your "no" changed (S1) ---------- */
+
+/*
+ * For a disputed purchase: the same purchase, re-checked just now by the
+ * same gate against today's rules (GET /household/vouches/:id/recheck). No
+ * checkout, nothing bought, nothing recorded — and the server refuses to
+ * guess about a record that never kept its brand and quantity.
+ */
+function recheckHtml(r, v) {
+  const name = esc(productTitle(v.decision.product));
+  if (!r.recheckable) return `<div class="changed muted">Can't re-check ${name}: ${esc(r.reason)}.</div>`;
+  const ruleName = (rule) => CHECK_NAME[rule] ?? (/^quantity/.test(rule) ? "Within your quantity limit" : rule);
+  const rows = r.changed.map((c) => `<li><b>${esc(ruleName(c.rule))}</b>:
+      ${c.then === null ? "not checked then" : c.then ? "✓ then" : "✗ then"} → ${c.today ? "✓ today" : "✗ today"}
+      <span class="meta">— ${esc(c.detail)}</span></li>`).join("");
+  const asks = r.today.held && r.changed.some((c) => c.rule === "autonomy_not_granted" && !c.today);
+  const headline = r.today.held && !r.then.held
+    ? `Then it bought ${name} ${v.trace?.started_by === "household_agent" ? "on its own" : "for you"}. <b>Today, the exact same purchase would be held${asks ? " — it now asks you first" : ""}.</b>`
+    : r.today.held ? `It would still be held today.` : `Today it would still go through.`;
+  return `<div class="changed">
+      <div class="eyebrow">What your “no” changed</div>
+      <div class="changed-head">${headline}</div>
+      ${rows ? `<ul>${rows}</ul>` : ""}
+      <div class="meta">Re-checked just now by the same gate, against your rules as they are today — same price, same brand, same confidence. No checkout, nothing bought.
+        Bar to buy on its own: ${r.then.threshold ?? "—"} then → ${r.today.threshold} today.</div>
+    </div>`;
+}
+
+async function loadRechecks() {
+  const disputed = state.vouches.filter((v) => v.dispute);
+  $("changedBlock").hidden = disputed.length === 0;
+  for (const v of disputed) {
+    let html;
+    try { html = recheckHtml(await household(`vouches/${encodeURIComponent(v.vouch_id)}/recheck`), v); }
+    catch (e) { html = `<div class="changed muted">Couldn't re-check: ${esc(e.message)}</div>`; }
+    const slot = document.querySelector(`[data-recheck-slot="${v.vouch_id}"]`);
+    if (slot) slot.innerHTML = html;
+    if (v === disputed[0]) $("changedBody").innerHTML = html; // newest first: Home shows the latest
+  }
+}
 
 async function explain(vouchId) {
   markWhy();
@@ -2673,6 +2730,7 @@ async function refresh() {
     await loadRecord();
     await loadFailures();
     await loadStudySummary();
+    await loadRechecks();
   } catch (e) {
     $("dot").className = "dot down";
     $("statusText").textContent = "reconnecting…";

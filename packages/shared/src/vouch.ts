@@ -123,6 +123,17 @@ export const Vouch = z.object({
     price: z.number().nullable(),
     reason: z.array(z.string()),
   }),
+  /**
+   * What was proposed, beyond the price the merchant set: the brand the agent
+   * named and how many. The gate compared both; keeping them is what lets a
+   * purchase be re-checked faithfully against a later mandate ("what your no
+   * changed", BUILD_PLAN.md S1). Null on records before 2026-10-14, which are
+   * then not re-checked rather than guessed at.
+   */
+  proposal: z
+    .object({ brand: z.string(), quantity: z.number().int().positive() })
+    .nullable()
+    .default(null),
   /** Why a Failed attempt failed, and at which stage. Null otherwise. */
   failure: z
     .object({

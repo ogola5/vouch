@@ -41,7 +41,9 @@ export const HOUSEHOLD_PREFIX = "/household";
 
 const MANDATE_PATH = /^\/household\/mandates\/([^/]+)$/;
 const VOUCH_ACTION_PATH = /^\/household\/vouches\/([^/]+)\/(approve|dispute|decline)$/;
-const ITEM_STATEMENT_PATH = /^\/household\/items\/([^/]+)\/statement$/;
+/** S1: "would it do the same today?" — read-only, so no passkey. */
+const VOUCH_RECHECK_PATH = /^\/household\/vouches\/([^/]+)\/recheck$/;
+const ITEM_STATEMENT_PATH =/^\/household\/items\/([^/]+)\/statement$/;
 const ITEM_RESPOND_PATH = /^\/household\/items\/([^/]+)\/respond$/;
 const ITEM_MODE_PATH = /^\/household\/items\/([^/]+)\/mode$/;
 
@@ -133,6 +135,12 @@ export async function handleHouseholdRequest(
     guard ? guard.require(action, description, proofFrom(body)) : null;
 
   try {
+    const recheck = VOUCH_RECHECK_PATH.exec(pathname);
+    if (recheck && method === "GET") {
+      send(res, 200, service.recheckToday(decodeURIComponent(recheck[1]!)));
+      return true;
+    }
+
     /* ---- study mode (W5c): the household's data; no agent tool touches it ---- */
     if (study && pathname === "/household/study" && method === "POST") {
       send(res, 200, study.save(await readJson(req)));

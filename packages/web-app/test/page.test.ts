@@ -313,6 +313,19 @@ describe("the console page holds together", () => {
     assert.ok(!/\$\{(item\.name|v\.decision\.product)\}/.test(tv), "TV text is escaped");
   });
 
+  it("shows what a dispute changed by re-checking, never by narrating (S1)", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /household\(`vouches\/\$\{encodeURIComponent\(v\.vouch_id\)\}\/recheck`\)/);
+    assert.match(html, /id="changedBlock"[^>]*hidden/);
+    // Says how it knows, and that nothing was bought doing it.
+    assert.match(code, /Re-checked just now by the same gate/);
+    assert.match(code, /No checkout, nothing bought/);
+    // A record the server can't re-check is shown as such, not dressed up.
+    assert.match(code, /if \(!r\.recheckable\) return/);
+    const fn = /function recheckHtml\(r, v\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.ok(!/\$\{c\.detail\}|\$\{r\.reason\}/.test(fn), "server text is escaped");
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);
