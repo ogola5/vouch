@@ -907,6 +907,46 @@ comparison narrated rather than real.
 - **For the video:** run it in a terminal beside the console. The held record appears on the
   household's Record view.
 
+**Round 2, approved by the owner 2026-10-14** ("increase novelty, and make the UI/UX leaner,
+better and more engaging").
+- **L1 — Trust history.** The household agent keeps every change of how far an item is handed
+  over: set up, earned (promotion accepted), lost (dispute), expired, or changed by the household.
+  Today only the latest change survives. Each item draws its history as a line across Remind →
+  Ask → Auto, with purchases and disputes marked on it.
+- **L2 — Leaner.**
+  - Compact item cards, with the controls behind "Adjust".
+  - A one-sentence "so far" summary on Home.
+  - Confidence in words on Rules, with the number kept beside it.
+- **L3 — Engaging.** A real first-run screen. Changes announce themselves: the card highlights,
+  with a sentence saying what changed.
+
+*L1 trade-off (it touches `mcp-server` and `web-app`).*
+- *Reason:* "trust that adapts" is the novel claim. A line that visibly steps down on a dispute and
+  up on a promotion shows it in one glance, in a way no other entry is likely to have.
+- *Risk:* a second record of mode changes could disagree with the mandate.
+- *Mitigation:*
+  - it is appended in the one place modes change (`setMode`), and at setup;
+  - it is stored with the item settings, which merge with defaults, so older households load with
+    an empty history;
+  - a test checks that the history's last entry always equals the mandate's current mode.
+
+**L1–L3 DONE 2026-10-14.**
+- **L1, trust history:** `ItemSettings.modeHistory` records setup, earned, lost, expired and
+  household changes. Each item card draws it as a line across Auto / Ask / Remind, with purchases
+  and disputes marked.
+  - Tests: the history after a dispute, and the invariant over a 70-day run with a promotion, an
+    expiry and a dispute.
+- **L2, leaner:**
+  - item cards are compact, with every control behind "Adjust", which stays open across refreshes;
+  - Home has a "so far" sentence counted from the record (its exact output is tested);
+  - Rules says "As careful as you set" or "More careful than you set — after N disputed
+    purchases", with the number kept.
+- **L3, engaging:** a first-run "Meet a household" screen. A mode change flashes its card and says
+  what changed, and why, in one sentence.
+- **Found by drawing the trust line:** disputes were dated by the wall clock in the store, so in
+  the demo a dispute appeared *before* the purchase it disputed. The service now passes the
+  household clock, and a test asserts a dispute is never dated before its purchase.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

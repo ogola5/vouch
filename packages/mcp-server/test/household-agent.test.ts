@@ -289,6 +289,39 @@ describe("modes: what the household has handed over, per item", () => {
     assert.ok(r2.changed.some((c) => c.rule === "autonomy_not_granted" && c.then === true && c.today === false), JSON.stringify(r2.changed));
   });
 
+  it("keeps a trust history: set up, then lost on a dispute (L1)", async () => {
+    const r = rig();
+    const actions = await until(r, (a) => a.item_id === "detergent" && a.kind === "proposed");
+    const bought = actions.find((a) => a.item_id === "detergent" && a.kind === "proposed")!;
+    assert.ok(bought.kind === "proposed");
+    await r.service.recordDispute({ vouch_id: bought.vouch_id });
+    const history = item(r, "detergent").settings.modeHistory;
+    assert.deepEqual(history.map((h) => [h.kind, h.from, h.to]), [["setup", null, "auto"], ["lost", "auto", "ask"]]);
+    assert.ok(history[1]!.day > history[0]!.day);
+    // The dispute is dated by the household's clock, like the purchase it
+    // disputes — never before it.
+    const v = r.service.listVouches({ limit: 50 }).find((x) => x.vouch_id === bought.vouch_id)!;
+    assert.ok(v.dispute!.disputed_at >= v.created_at, `${v.dispute!.disputed_at} < ${v.created_at}`);
+  });
+
+  it("never lets the history disagree with the mandate, over a long run (L1)", async () => {
+    // Promotions, expiry and a dispute all happen in 70 days of the demo.
+    const r = rig();
+    for (let n = 0; n < 4; n++) {
+      await until(r, (a) => a.item_id === "coffee" && a.kind === "notified");
+      await r.agent.respond("coffee", { response: "order" });
+    }
+    await r.agent.respond("coffee", { response: "accept_promotion" });
+    await r.agent.advance(70);
+    for (const it of r.agent.pantry()) {
+      const last = it.settings.modeHistory.at(-1)!;
+      assert.equal(last.to, it.autonomy?.mode ?? "ask", `${it.item_id}: ${JSON.stringify(it.settings.modeHistory)}`);
+    }
+    const coffee = item(r, "coffee").settings.modeHistory.map((h) => h.kind);
+    assert.ok(coffee.includes("earned"), JSON.stringify(coffee));
+    assert.ok(item(r, "toilet-paper").settings.modeHistory.some((h) => h.kind === "expired"));
+  });
+
   it("expires: Auto with an end date steps down to Ask by itself", async () => {
     const r = rig();
     const actions = await until(r, (a) => a.item_id === "toilet-paper" && a.kind === "autonomy_expired", 65);

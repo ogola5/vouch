@@ -358,6 +358,56 @@ describe("the console page holds together", () => {
     assert.equal(forVoice("Checked · bought · done."), "Checked, bought, done.");
   });
 
+  it("draws each item's trust history from the agent's record, with disputes marked (L1)", () => {
+    const code = withoutComments(scriptBody());
+    const fn = /function trustTrack\(item\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.match(fn, /item\.settings\.modeHistory/);
+    assert.match(fn, /v\.dispute \?/);
+    assert.match(fn, /aria-label="How far \$\{esc\(item\.name\)\} is handed over/);
+    assert.match(code, /\$\{trustTrack\(item\)\}/);
+  });
+
+  it("keeps item cards lean: the controls live behind Adjust, and stay open across refreshes (L2)", () => {
+    const code = withoutComments(scriptBody());
+    const card = /function itemCard\(item\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    const more = card.slice(card.indexOf('<details class="item-more"'));
+    for (const control of ["data-hh-mode", "data-hh-until", "data-hh-weekends", "data-hh-level", "data-hh-plenty"]) {
+      assert.ok(more.includes(control), `${control} should be inside Adjust`);
+    }
+    assert.match(code, /openAdjust\.add\(d\.dataset\.hhAdjust\)/);
+  });
+
+  it("says how careful it is in words, keeping the number (L2)", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /More careful than you set/);
+    assert.match(code, /As careful as you set/);
+    assert.match(code, /\$\{esc\(carefulText\(m, diff\)\)\}/);
+  });
+
+  it("sums up what it has done in one sentence, counted from the record (L2)", () => {
+    const code = withoutComments(scriptBody());
+    const src = /function soFarText\(\) \{[\s\S]*?\n\}/.exec(code)?.[0];
+    assert.ok(src);
+    const run = (vouches: unknown[]) => new Function("state", `${src}; return soFarText();`)({ vouches }) as string;
+    const v = (status: string, started_by: string, price: number, extra: Record<string, unknown> = {}) =>
+      ({ action: { status }, trace: { started_by }, decision: { price, reason: [] }, dispute: null, ...extra });
+    assert.equal(run([]), "");
+    assert.equal(
+      run([v("Complete", "household_agent", 12.49), v("Complete", "household_agent", 13.99, { dispute: { disputed_at: "x" } }),
+           v("Complete", "household", 9.99), v("PendingApproval", "mcp_tool", 27.8)]),
+      "So far it has bought 2 things on its own ($26.48), ordered 1 thing when you said yes and is holding 1 for you. " +
+        "You've said “I didn't want that” once — and it got more careful."
+    );
+  });
+
+  it("starts with one clear step, and announces a change of mode (L3)", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(html, /id="firstRun"/);
+    assert.match(code, /document\.body\.classList\.toggle\("first-run-on", !hh\.set_up\)/);
+    assert.match(code, /justChanged\.add\(i\.item_id\)/);
+    assert.match(code, /toast\(`\$\{i\.name\}: \$\{MODE_NAME\[before\]\} → /);
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);

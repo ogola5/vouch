@@ -68,6 +68,23 @@ export interface ItemSettings {
   promotion: { day: number; until: string } | null;
   /** The last time the mode changed, and why — shown to the household. */
   lastModeChange: { day: number; from: AutonomyMode; to: AutonomyMode; why: string } | null;
+  /**
+   * Every change in how far this item is handed over, oldest first — the
+   * trust history (BUILD_PLAN.md L1). Appended only where modes change
+   * (setMode) and at setup, so its last entry is always the mandate's mode.
+   */
+  modeHistory: ModeChange[];
+}
+
+/** One step in an item's trust history. */
+export interface ModeChange {
+  day: number;
+  /** Null for the first entry: how it was set up. */
+  from: AutonomyMode | null;
+  to: AutonomyMode;
+  /** setup · earned (accepted an offer) · lost (a dispute) · expired (its time ran out) · household (changed by hand) */
+  kind: "setup" | "earned" | "lost" | "expired" | "household";
+  why: string;
 }
 
 const DEFAULT_SETTINGS: ItemSettings = {
@@ -78,6 +95,7 @@ const DEFAULT_SETTINGS: ItemSettings = {
   acceptedInARow: 0,
   promotion: null,
   lastModeChange: null,
+  modeHistory: [],
 };
 
 export type DayAction =
@@ -166,7 +184,10 @@ export class HouseholdAgent {
     this.store.setHouseholdMeta("epoch", epoch);
 
     for (const setup of DEMO_SETUP) {
-      this.saveSettings(setup.item_id, { ...DEFAULT_SETTINGS });
+      this.saveSettings(setup.item_id, {
+        ...DEFAULT_SETTINGS,
+        modeHistory: [{ day: DEMO_START_DAY, from: null, to: setup.autonomy.mode, kind: "setup", why: "how you set it up" }],
+      });
       for (const event of demoHistory(setup)) this.store.appendHouseholdEvent(setup.item_id, event);
 
       const autonomy: Autonomy = {
@@ -257,7 +278,7 @@ export class HouseholdAgent {
       // Expired: Auto with an end date steps down to Ask by itself. The gate
       // would hold an unprompted purchase anyway; this makes the screen agree.
       if (mandate.autonomy.mode === "auto" && mandate.autonomy.until && this.dateOf(day) > mandate.autonomy.until) {
-        mandate = this.setMode(itemId, { mode: "ask", until: null }, "the time you set for it ran out");
+        mandate = this.setMode(itemId, { mode: "ask", until: null }, "the time you set for it ran out", "expired");
         actions.push({ day, item_id: itemId, kind: "autonomy_expired" });
       }
 
@@ -376,7 +397,7 @@ export class HouseholdAgent {
 
     if (answer.response === "accept_promotion") {
       if (!settings.promotion) throw new Error(`No offer to hand over "${itemId}" is waiting`);
-      this.setMode(itemId, { mode: "auto", until: settings.promotion.until }, "you accepted after saying yes four times in a row");
+      this.setMode(itemId, { mode: "auto", until: settings.promotion.until }, "you accepted after saying yes four times in a row", "earned");
       this.saveSettings(itemId, { ...this.settings(itemId), promotion: null });
       return { item: this.item(itemId) };
     }
@@ -392,7 +413,7 @@ export class HouseholdAgent {
    */
   setItemMode(itemId: string, autonomy: Partial<Autonomy>): PantryItem {
     this.requireItem(itemId);
-    this.setMode(itemId, autonomy, "you changed it");
+    this.setMode(itemId, autonomy, "you changed it", "household");
     this.saveSettings(itemId, { ...this.settings(itemId), notice: null });
     return this.item(itemId);
   }
@@ -416,15 +437,18 @@ export class HouseholdAgent {
 
   /* ---------------------------------------------------------------------- */
 
-  private setMode(itemId: string, change: Partial<Autonomy>, why: string): Mandate {
+  private setMode(itemId: string, change: Partial<Autonomy>, why: string, kind: ModeChange["kind"]): Mandate {
     const mandate = this.mandateFor(itemId);
     if (!mandate) throw new Error(`"${itemId}" has no mandate`);
     const next: Autonomy = { ...mandate.autonomy, ...change };
     const updated = this.service.updateMandate(mandate.mandate_id, { autonomy: next });
     if (next.mode !== mandate.autonomy.mode) {
+      const settings = this.settings(itemId);
+      const step: ModeChange = { day: this.today(), from: mandate.autonomy.mode, to: next.mode, kind, why };
       this.saveSettings(itemId, {
-        ...this.settings(itemId),
-        lastModeChange: { day: this.today(), from: mandate.autonomy.mode, to: next.mode, why },
+        ...settings,
+        lastModeChange: { day: step.day, from: mandate.autonomy.mode, to: next.mode, why },
+        modeHistory: [...settings.modeHistory, step],
       });
     }
     return updated;
@@ -435,7 +459,7 @@ export class HouseholdAgent {
     if (typeof itemId !== "string" || !this.isSetUp()) return;
     this.saveSettings(itemId, { ...this.settings(itemId), acceptedInARow: 0, promotion: null });
     if (mandate.autonomy.mode === "auto") {
-      this.setMode(itemId, { mode: "ask", until: null }, "you disputed a purchase it made");
+      this.setMode(itemId, { mode: "ask", until: null }, "you disputed a purchase it made", "lost");
     }
   }
 

@@ -343,6 +343,13 @@ export class VouchStore {
     reason?: string;
     newThreshold: number;
     delta: number;
+    /**
+     * When it happened, by the caller's clock. The service passes the
+     * household's clock, so a dispute can never be dated before the purchase
+     * it disputes (it was, while this used the wall clock — found by drawing
+     * the trust history). Defaults to now.
+     */
+    at?: string;
   }): { vouch: Vouch; change: ThresholdChange; dispute: DisputeRecord } {
     return this.transaction(() => {
       const vouch = this.getVouch(input.vouch_id);
@@ -357,7 +364,7 @@ export class VouchStore {
       }
 
       const mandate = this.requireMandate(vouch.authority.mandate_id);
-      const now = new Date().toISOString();
+      const now = input.at ?? new Date().toISOString();
       const thresholdBefore = mandate.confidence_threshold;
 
       const updatedMandate = this.saveMandate({

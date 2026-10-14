@@ -144,6 +144,16 @@
   .view .vouch, .view .mandate { background: var(--panel); box-shadow: var(--shadow); }
   .view .vouch { margin-bottom: 12px; }
   #replayBody, #catalog { margin-top: 14px; }
+  .so-far { margin: 10px 0 0; font-size: 15px; max-width: 64ch; padding: 8px 12px; border-radius: 10px;
+            background: var(--panel); border: 1px solid var(--line); }
+  .first-run { display: none; grid-template-columns: auto 1fr; gap: 18px; align-items: center; margin-bottom: 18px;
+               background: var(--panel); border: 1.5px solid var(--accent); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-lift); }
+  .first-run h2 { margin: 0 0 6px; font-size: 22px; }
+  .first-run p { margin: 0 0 14px; color: var(--muted); max-width: 62ch; }
+  .fr-art { font-size: 54px; line-height: 1; }
+  body.first-run-on .first-run { display: grid; }
+  body.first-run-on #waiting, body.first-run-on #changedBlock, body.first-run-on #hhPanel, body.first-run-on .jump,
+  body.first-run-on #hhSetup { display: none !important; }
   .jump { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .jump-card { display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: var(--ink);
                background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px;
@@ -312,6 +322,24 @@
   .item-foot { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .item-foot label { display: inline-flex; align-items: center; gap: 5px; margin: 0; font-size: 12px; }
   .item-foot input[type="date"] { width: auto; padding: 4px 6px; font-size: 12px; }
+  .trust-track { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: stretch; }
+  .tt-lanes { display: flex; flex-direction: column; justify-content: space-between; font-size: 9.5px; line-height: 1;
+              color: var(--faint); padding: 2px 0; text-align: right; }
+  .trust-track svg { width: 100%; height: 40px; display: block; overflow: visible; }
+  .tt-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 2 3; }
+  .tt-line { fill: none; stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .tt-line.remind { stroke: var(--info); } .tt-line.ask { stroke: var(--accent); } .tt-line.auto { stroke: var(--ok); }
+  .tt-buy { stroke: var(--ok); stroke-width: 3; vector-effect: non-scaling-stroke; }
+  .tt-held { stroke: var(--hold); stroke-width: 3; vector-effect: non-scaling-stroke; }
+  .tt-other { stroke: var(--faint); stroke-width: 3; vector-effect: non-scaling-stroke; }
+  .tt-dispute { stroke: var(--bad); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-dasharray: 3 2; }
+  details.item-more > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); font-weight: 600; list-style: none; }
+  details.item-more > summary::-webkit-details-marker { display: none; }
+  details.item-more > summary::before { content: "▸ "; }
+  details.item-more[open] > summary::before { content: "▾ "; }
+  details.item-more[open] { display: grid; gap: 8px; }
+  .item.flash { animation: flash 2.6s ease; }
+  @keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
   .log { font-size: 13px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
   .log li { margin-bottom: 3px; }
   .log ul { margin: 6px 0 0; padding-left: 18px; }
@@ -400,6 +428,9 @@
   .term { font-size: 12.5px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 9px; }
   .term b { font-weight: 650; }
   .meter-wrap { margin-top: 6px; }
+  .careful { font-size: 16px; font-weight: 650; color: var(--ok); }
+  .careful.tight { color: var(--hold); }
+  .careful + .meter-top .threshold { font-size: 20px; }
   .meter-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .threshold { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
   .delta { font-size: 13px; font-weight: 650; }
@@ -538,6 +569,7 @@
             <div class="eyebrow" id="hhDate"></div>
             <h1 id="homeTitle">Your home, looked after</h1>
             <p class="lede">Your agent restocks the everyday things. Vouch decides how far it may go — and shows you why, every time.</p>
+            <p class="so-far" id="soFar" hidden></p>
           </div>
           <div class="hh-controls">
             <button class="small demo-only" id="hhFwd1" title="Demo control: move the household's clock forward">+1 day</button>
@@ -559,6 +591,18 @@
             <button class="small ghost" id="storyHide">Got it</button>
           </div>
         </details>
+
+        <section class="first-run" id="firstRun" aria-labelledby="firstRunTitle">
+          <div class="fr-art" aria-hidden="true">🧺</div>
+          <div>
+            <h2 id="firstRunTitle">Meet a household</h2>
+            <p>Six everyday things — detergent, coffee, dish soap, paper towels, toilet paper, dog food — each
+              handed over a different amount. Load it, move the clock forward, and watch what the agent does on
+              its own, what it asks you, and what it isn't allowed to do.</p>
+            <button class="primary" id="firstRunGo">Load the demo household</button>
+            <span class="meta" style="margin-left:8px">a simulated household — nothing is really bought</span>
+          </div>
+        </section>
 
         <section class="block" id="waiting" aria-labelledby="waitTitle">
           <div class="block-head">
@@ -1540,6 +1584,7 @@ function renderMandates() {
         </div>
         <div class="terms">${terms}</div>
         <div class="meter-wrap">
+          <div class="careful ${diff > 0.0001 ? "tight" : ""}">${esc(carefulText(m, diff))}</div>
           <div class="meter-top">
             <span class="threshold">${now.toFixed(2)}</span>
             <span class="meta">confidence needed to buy alone</span>
@@ -1589,6 +1634,14 @@ function renderMandates() {
     }));
 
   state.mandates.forEach((m) => lastThresholds.set(m.mandate_id, m.confidence_threshold));
+}
+
+/** L2: how careful the agent is right now, in words; the number stays beside it. */
+function carefulText(m, diff) {
+  const n = m.history.disputed_actions;
+  if (diff > 0.0001) return `More careful than you set${n ? ` — after ${n} disputed purchase${n === 1 ? "" : "s"}` : ""}`;
+  if (diff < -0.0001) return "Trusting more than you set"; // cannot happen: recovery is floored at your number
+  return "As careful as you set";
 }
 
 function statusBadge(v) {
@@ -2456,6 +2509,11 @@ $("tamperBtn").addEventListener("click", tamperDemo);
 
 let hh = { set_up: false, today: null, date: null, items: [] };
 let hhLog = [];
+/** Items whose "Adjust" panel is open — kept across re-renders. */
+const openAdjust = new Set();
+/** Items whose mode changed since the last render: their card flashes once (L3). */
+let justChanged = new Set();
+let lastModes = null;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MODE_NAME = { remind: "Remind", ask: "Ask", auto: "Auto" };
@@ -2577,27 +2635,75 @@ function itemCard(item) {
     : "";
   const mode = a?.mode ?? "ask";
   const weekends = a?.delivery_days?.length === 2 && a.delivery_days.includes(0) && a.delivery_days.includes(6);
+  const open = openAdjust.has(item.item_id) ? " open" : "";
   return `
-    <div class="item" id="hh-${item.item_id}">
+    <div class="item ${justChanged.has(item.item_id) ? "flash" : ""}" id="hh-${item.item_id}">
       <div class="item-top">
         <h4>${esc(item.name)}</h4>
         <span class="mode ${mode}">${esc(modeText(a))}</span>
       </div>
       <div class="left"><b>${esc(daysLeftText(f))}</b> ${state}</div>
       <div class="gauge ${f.daysLeft && f.daysLeft.median < 4 ? "low" : ""}" title="the shaded band is where it could really be">${range}</div>
-      <div class="why">${esc(paceText(item))}</div>
+      ${trustTrack(item)}
       ${change}
-      <div class="item-foot">
-        <div class="seg" role="group" aria-label="What may your agent do for ${esc(item.name)}?">
-          ${["remind", "ask", "auto"].map((m) => `<button class="${m === mode ? "on" : ""}" data-hh-mode="${item.item_id}" data-m="${m}">${MODE_NAME[m]}</button>`).join("")}
+      <details class="item-more" data-hh-adjust="${item.item_id}"${open}>
+        <summary>Adjust</summary>
+        <div class="why">${esc(paceText(item))}</div>
+        <div class="item-foot">
+          <div class="seg" role="group" aria-label="What may your agent do for ${esc(item.name)}?">
+            ${["remind", "ask", "auto"].map((m) => `<button class="${m === mode ? "on" : ""}" data-hh-mode="${item.item_id}" data-m="${m}">${MODE_NAME[m]}</button>`).join("")}
+          </div>
+          ${mode === "auto" ? `<label>until <input type="date" data-hh-until="${item.item_id}" value="${esc(a?.until ?? "")}"></label>` : ""}
+          <label><input type="checkbox" data-hh-weekends="${item.item_id}" ${weekends ? "checked" : ""} style="width:auto"> weekends only</label>
         </div>
-        ${mode === "auto" ? `<label>until <input type="date" data-hh-until="${item.item_id}" value="${esc(a?.until ?? "")}"></label>` : ""}
-        <label><input type="checkbox" data-hh-weekends="${item.item_id}" ${weekends ? "checked" : ""} style="width:auto"> weekends only</label>
-      </div>
-      <div class="item-foot">
-        <button class="small ghost" data-hh-level="${item.item_id}" data-p="0">We're out</button>
-        <button class="small ghost" data-hh-plenty="${item.item_id}">Plenty left</button>
-      </div>
+        <div class="item-foot">
+          <button class="small ghost" data-hh-level="${item.item_id}" data-p="0">We're out</button>
+          <button class="small ghost" data-hh-plenty="${item.item_id}">Plenty left</button>
+        </div>
+      </details>
+    </div>`;
+}
+
+/*
+ * L1 — the trust history, drawn: how far this item has been handed over,
+ * day by day, as a line across Remind / Ask / Auto. Purchases and disputes
+ * are marked on it, so a step down sits right under the "no" that caused it.
+ * Built from the agent's own record of every change (settings.modeHistory)
+ * and from the Vouches — nothing here is inferred.
+ */
+const LANE = { auto: 7, ask: 19, remind: 31 };
+const mandateIdFor = (itemId) => `m_${itemId.replace(/-/g, "_")}`;
+function dayOfIso(iso) {
+  return hh.today + Math.floor((Date.parse(iso) - Date.parse(`${hh.date}T00:00:00Z`)) / 86400000);
+}
+function trustTrack(item) {
+  const hist = item.settings.modeHistory ?? [];
+  if (!hist.length) return "";
+  const start = hist[0].day;
+  const span = Math.max(7, hh.today - start);
+  const x = (d) => (((d - start) / span) * 100).toFixed(2);
+  let path = `M0 ${LANE[hist[0].to]}`;
+  for (const h of hist.slice(1)) path += ` H${x(h.day)} V${LANE[h.to]}`;
+  path += ` H100`;
+  const vouches = state.vouches.filter((v) => v.authority.mandate_id === mandateIdFor(item.item_id));
+  const marks = vouches.map((v) => {
+    const d = v.household?.day ?? dayOfIso(v.created_at);
+    if (d < start) return "";
+    const cls = v.action.status === "Complete" ? "buy" : v.action.status === "PendingApproval" ? "held" : "other";
+    const dispute = v.dispute ? `<line class="tt-dispute" x1="${x(dayOfIso(v.dispute.disputed_at))}" x2="${x(dayOfIso(v.dispute.disputed_at))}" y1="2" y2="36"/>` : "";
+    return `<line class="tt-${cls}" x1="${x(d)}" x2="${x(d)}" y1="34" y2="38"/>${dispute}`;
+  }).join("");
+  const last = hist[hist.length - 1];
+  const KIND = { setup: "set up", earned: "earned", lost: "lost", expired: "ran out", household: "changed by you" };
+  const steps = hist.slice(1).map((h) => `${MODE_NAME[h.from]} → ${MODE_NAME[h.to]} (${KIND[h.kind]}, ${niceDate(h.day)})`).join(" · ");
+  return `<div class="trust-track" title="${esc(steps || `${MODE_NAME[last.to]} since you set it up`)}">
+      <div class="tt-lanes" aria-hidden="true"><span>Auto</span><span>Ask</span><span>Remind</span></div>
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" role="img"
+           aria-label="How far ${esc(item.name)} is handed over: ${esc(steps || `${MODE_NAME[last.to]} since you set it up`)}">
+        <line class="tt-grid" x1="0" x2="100" y1="${LANE.auto}" y2="${LANE.auto}"/><line class="tt-grid" x1="0" x2="100" y1="${LANE.ask}" y2="${LANE.ask}"/><line class="tt-grid" x1="0" x2="100" y1="${LANE.remind}" y2="${LANE.remind}"/>
+        ${marks}
+        <path class="tt-line ${last.to}" d="${path}"/>
+      </svg>
     </div>`;
 }
 
@@ -2727,7 +2833,32 @@ const LOG_TEXT = {
   failed: (a) => `couldn't order ${itemName(a.item_id).toLowerCase()}: ${a.error}`,
 };
 
+/** L2: everything it has done, in one sentence — counted from the record, never estimated. */
+function soFarText() {
+  const vs = state.vouches;
+  const done = (v) => v.action.status === "Complete";
+  const approved = (v) => (v.decision.reason ?? []).includes("approved_by_household");
+  const onOwn = vs.filter((v) => done(v) && v.trace?.started_by === "household_agent" && !approved(v));
+  const askedYes = vs.filter((v) => done(v) && (v.trace?.started_by === "household" || approved(v)));
+  const held = vs.filter((v) => v.action.status === "PendingApproval").length;
+  const noes = vs.filter((v) => v.dispute).length;
+  const spent = onOwn.reduce((s, v) => s + (v.decision.price ?? 0), 0);
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const parts = [];
+  if (onOwn.length) parts.push(`bought ${n(onOwn.length, "thing", "things")} on its own ($${spent.toFixed(2)})`);
+  if (askedYes.length) parts.push(`ordered ${n(askedYes.length, "thing", "things")} when you said yes`);
+  if (held) parts.push(`is holding ${held} for you`);
+  if (!parts.length && !noes) return "";
+  let s = parts.length ? `So far it has ${parts.join(", ").replace(/, ([^,]*)$/, " and $1")}.` : "";
+  if (noes) s += ` You've said “I didn't want that” ${noes === 1 ? "once — and it got more careful" : `${noes} times — and it got more careful each time`}.`;
+  return s.trim();
+}
+
 function renderHousehold() {
+  document.body.classList.toggle("first-run-on", !hh.set_up);
+  const soFar = hh.set_up ? soFarText() : "";
+  $("soFar").hidden = !soFar;
+  $("soFar").textContent = soFar;
   $("hhSetup").hidden = hh.set_up;
   $("hhFwd1").hidden = !hh.set_up;
   $("hhFwd7").hidden = !hh.set_up;
@@ -2749,7 +2880,25 @@ function renderHousehold() {
     : state.vouches.some((v) => v.action.status === "PendingApproval")
       ? "" // the held purchase above is what needs you
       : `<div class="calm">Nothing needs you right now. It will ask when something does.</div>`;
+  // A change of mode announces itself: the card flashes and a sentence says
+  // what changed and why — the household should never have to spot it.
+  const modes = new Map(hh.items.map((i) => [i.item_id, i.autonomy?.mode ?? "ask"]));
+  justChanged = new Set();
+  if (lastModes) {
+    for (const i of hh.items) {
+      const before = lastModes.get(i.item_id);
+      if (before && before !== modes.get(i.item_id)) {
+        justChanged.add(i.item_id);
+        const why = i.settings.lastModeChange?.why;
+        toast(`${i.name}: ${MODE_NAME[before]} → ${MODE_NAME[modes.get(i.item_id)]}${why ? ` — ${why}` : ""}.`);
+      }
+    }
+  }
+  lastModes = modes;
   $("hhItems").innerHTML = hh.items.map(itemCard).join("");
+  $("hhItems").querySelectorAll("[data-hh-adjust]").forEach((d) => d.addEventListener("toggle", () => {
+    if (d.open) openAdjust.add(d.dataset.hhAdjust); else openAdjust.delete(d.dataset.hhAdjust);
+  }));
 
   if (hhLog.length) {
     $("hhLog").hidden = false;
@@ -2813,6 +2962,7 @@ async function advanceDays(days) {
   await refresh();
 }
 
+$("firstRunGo").addEventListener("click", () => $("hhSetup").click());
 $("hhFwd1").addEventListener("click", () => advanceDays(1));
 $("hhFwd7").addEventListener("click", () => advanceDays(7));
 $("hhSetup").addEventListener("click", async () => {

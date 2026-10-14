@@ -835,6 +835,7 @@ export class VouchService {
       reason: input.reason,
       newThreshold: adjustment.newThreshold,
       delta: adjustment.delta,
+      at: this.now().toISOString(),
     });
     // Trust lost: a household that disputes a purchase gets asked next time
     // (HouseholdAgent demotes the item from Auto to Ask). Narrows authority,
