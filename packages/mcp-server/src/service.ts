@@ -134,6 +134,13 @@ export interface CreateMandateInput {
   autonomy?: Mandate["autonomy"];
 }
 
+/** A Vouch was written; see VouchService.onRecordChange. */
+export interface RecordChange {
+  vouch_id: string;
+  mandate_id: string;
+  status: Vouch["action"]["status"];
+}
+
 /** The answer to "would it do the same today?" — see VouchService.recheckToday. */
 export interface Recheck {
   vouch_id: string;
@@ -266,6 +273,27 @@ export class VouchService {
     this.physicalEvidence = deps.physicalEvidence;
     this.household = deps.household ?? DEMO_HOUSEHOLD;
     this.onPurchaseCompleted = deps.onPurchaseCompleted;
+  }
+
+  /*
+   * "The record changed" (BUILD_PLAN.md T4): raised wherever a Vouch is
+   * written — held, bought, failed, declined, approved, disputed — so MCP
+   * resource subscribers can be told without asking. Many listeners, unlike
+   * the single-purpose hooks above; a listener that throws is ignored, so a
+   * broken subscriber can never undo or block a purchase.
+   */
+  private readonly recordListeners = new Set<(change: RecordChange) => void>();
+
+  onRecordChange(listener: (change: RecordChange) => void): () => void {
+    this.recordListeners.add(listener);
+    return () => this.recordListeners.delete(listener);
+  }
+
+  private announce(vouch: Vouch): void {
+    const change: RecordChange = { vouch_id: vouch.vouch_id, mandate_id: vouch.authority.mandate_id, status: vouch.action.status };
+    for (const listener of this.recordListeners) {
+      try { listener(change); } catch { /* a subscriber's problem, not the record's */ }
+    }
   }
 
   /** Lets HouseholdAgent subscribe after both have been constructed. */
@@ -609,6 +637,7 @@ export class VouchService {
       };
 
       const saved = this.store.saveVouch(vouch);
+      this.announce(saved);
       return {
         outcome: "held_for_approval",
         vouch: saved,
@@ -683,6 +712,7 @@ export class VouchService {
         trace: { started_by: startedBy, mcp_request_id: input.origin?.mcp_request_id ?? null, steps },
         failure: { stage: progress.stage, message },
       });
+      this.announce(failed);
       throw new PurchaseFailedError(message, failed.vouch_id);
     }
   }
@@ -715,6 +745,7 @@ export class VouchService {
       user_controls: ["explain"],
       trace: { started_by: held.trace?.started_by ?? "service", mcp_request_id: held.trace?.mcp_request_id ?? null, steps },
     });
+    this.announce(declined);
     const mandate = this.store.getMandate(held.authority.mandate_id);
     if (mandate) this.onPurchaseDeclined?.({ vouch: declined, mandate });
     return declined;
@@ -841,6 +872,7 @@ export class VouchService {
     // (HouseholdAgent demotes the item from Auto to Ask). Narrows authority,
     // so it happens at once, with no passkey.
     this.onDisputeRecorded?.({ vouch: result.vouch, mandate: result.change.mandate });
+    this.announce(result.vouch);
 
     return {
       vouch: result.vouch,
@@ -1143,6 +1175,7 @@ export class VouchService {
     };
 
     const saved = this.store.saveVouch(vouch);
+    this.announce(saved);
     this.onPurchaseCompleted?.({
       vouch: saved,
       mandate,

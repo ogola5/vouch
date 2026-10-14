@@ -408,6 +408,13 @@ describe("the console page holds together", () => {
     assert.match(code, /toast\(`\$\{i\.name\}: \$\{MODE_NAME\[before\]\} → /);
   });
 
+  it("updates itself when the record changes on the server (T4)", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(code, /new EventSource\("\/api\/events"\)/);
+    assert.match(code, /addEventListener\("record"/);
+    assert.match(code, /Something new is waiting for you/);
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);

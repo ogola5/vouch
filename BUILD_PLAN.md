@@ -986,6 +986,52 @@ and list_mandates.
   against real results.
 - **The probe:** it now reads the typed results, as an outside client would.
 
+**T4 trade-off (written before code). This reverses the "stateless MCP transport" choice in
+server.ts.**
+
+*Reason.* MCP resource subscriptions are the spec's way for a server to tell a client
+"something changed" without being asked. For Alexa+ that is the natural moment: a device announces
+"a purchase needs your OK". A server must hold a session open to push into, and stateless mode has
+none.
+
+*Risk.*
+- Sessions are state in memory: they can leak, and they are lost on restart.
+- A client reconnecting through a tunnel gets a new session.
+- Every existing client (the Strands agent, the console bridge, the probe, the tests) must keep
+  working.
+
+*Mitigation.*
+- Sessions only hold the transport and a set of subscriptions. All durable state stays in SQLite,
+  so losing a session loses nothing but a subscription.
+- A session is removed on close or DELETE. There is a cap on concurrent sessions, and idle
+  sessions are swept.
+- The SDK client handles `Mcp-Session-Id` by itself, so no client code changes. The whole existing
+  suite, including the security matrix, must pass unchanged.
+- Resources are read-only views of what tools already return; there are no new powers. The
+  household surface is untouched.
+
+**T4 DONE 2026-10-14.**
+- **Resources:** `vouch://records/waiting` (subscribable), `vouch://records/{vouch_id}`, and
+  `vouch://mandates/{mandate_id}`, which are listable.
+- **"The record changed":** `VouchService.onRecordChange` fires wherever a Vouch is written (held,
+  bought, failed, declined, approved, disputed). Each session pushes
+  `notifications/resources/updated` for the URIs its client subscribed to.
+- **Sessions:** the transport has sessions. A session is removed on close, there is a 100-session
+  cap and a 30-minute idle sweep, and a 404 is returned for an unknown session.
+- **In the console:** the bridge subscribes, and `/api/events` forwards changes to the page as
+  server-sent events. A purchase held for an *outside* agent appears on Home and the TV view by
+  itself, with "Something new is waiting for you".
+- **Found by its own test:** after an MCP restart, the first error is a dropped socket, not the
+  spec's 404. The bridge and the chat agent now start a new session on either, and a test restarts
+  the server under a live bridge to prove it.
+- **Proof:**
+  - a subscribed "device" client is told when another client's purchase is held;
+  - resources list and read;
+  - no-session and unknown-session requests are refused;
+  - the restart test, and an SSE test from an outside agent to the page;
+  - the probe, 10/10 on the real stack, including "told without asking";
+  - the existing suite passed unchanged with sessions, including the security matrix.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

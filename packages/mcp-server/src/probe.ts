@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { ResourceUpdatedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * An outside MCP client, connecting cold (BUILD_PLAN.md S3).
@@ -79,6 +80,12 @@ export async function probeMcp(url: string): Promise<ProbeReport> {
       add("set a mandate: under $15, Brand A or B", true, "m_probe already exists");
     }
 
+    // T4: subscribe to what is waiting for the household, before asking —
+    // so the server can tell this client without being asked.
+    const updates: string[] = [];
+    client.setNotificationHandler(ResourceUpdatedNotificationSchema, async (n) => { updates.push(n.params.uri); });
+    await client.subscribeResource({ uri: "vouch://records/waiting" });
+
     const proposed = await client.callTool({
       name: "propose_purchase",
       arguments: {
@@ -97,6 +104,13 @@ export async function probeMcp(url: string): Promise<ProbeReport> {
       "ask for the $27.80 Brand C, claiming 0.99 confidence",
       result?.outcome === "held_for_approval" && result.session_status === "ready_for_complete",
       result ? `${result.outcome}; checkout ${result.session_status}; stopped by ${result.vouch.authority.triggered_rules.join(", ")}` : textOf(proposed)
+    );
+
+    for (let i = 0; i < 50 && !updates.includes("vouch://records/waiting"); i++) await new Promise((r) => setTimeout(r, 20));
+    add(
+      "be told it is waiting, without asking",
+      updates.includes("vouch://records/waiting"),
+      updates.length ? `notifications/resources/updated → ${[...new Set(updates)].join(", ")}` : "no notification arrived"
     );
 
     let refused = false;

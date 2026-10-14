@@ -3001,10 +3001,34 @@ async function refresh() {
 }
 let retrying = false;
 
-refresh();
+/*
+ * Live (T4): the server tells the console when the record changes — the
+ * console is subscribed over MCP, and /api/events forwards it — so a purchase
+ * held for an outside agent appears here, and on the TV view, by itself.
+ * Debounced: a burst of changes is one refresh. EventSource reconnects on its own.
+ */
+let liveTimer = null;
+let heldBefore = null;
+function startLive() {
+  if (typeof EventSource === "undefined") return;
+  const events = new EventSource("/api/events");
+  events.addEventListener("record", () => {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(async () => {
+      if (chatBusy) return; // the chat refreshes when it finishes
+      await refresh();
+      const held = state.vouches.filter((v) => v.action.status === "PendingApproval").length;
+      if (heldBefore !== null && held > heldBefore) toast("Something new is waiting for you.");
+      heldBefore = held;
+    }, 250);
+  });
+}
+
+refresh().then(() => { heldBefore = state.vouches.filter((v) => v.action.status === "PendingApproval").length; });
 chatBanner();
 loadPasskey();
 loadReplay();
+startLive();
 </script>
 </body>
 </html>

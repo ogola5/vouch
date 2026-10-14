@@ -129,6 +129,29 @@ export function createWebApp(options: WebAppOptions): {
       return;
     }
 
+    /*
+     * Live updates (T4): the bridge is subscribed to the record over MCP; this
+     * forwards "something changed" to the page as server-sent events, so a
+     * purchase held for an outside agent appears on Home and the TV view by
+     * itself. Carries no data — the page re-reads through the same tools.
+     */
+    if (method === "GET" && path === "/api/events") {
+      await bridge.connect().catch(() => undefined);
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+      });
+      res.write(": connected\n\n");
+      const off = bridge.onRecordChanged(() => res.write("event: record\ndata: {}\n\n"));
+      const ping = setInterval(() => res.write(": ping\n\n"), 25_000);
+      req.on("close", () => {
+        off();
+        clearInterval(ping);
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/api/health") {
       await bridge.connect();
       sendJson(res, 200, {

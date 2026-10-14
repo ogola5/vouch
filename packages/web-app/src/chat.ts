@@ -1,4 +1,5 @@
 import { createVouchAgent, resolveModelConfig, type VouchAgent } from "@vouch/orchestrator";
+import { isSessionLost } from "./bridge.ts";
 
 /**
  * Holds the conversation for the console's chat panel.
@@ -121,6 +122,19 @@ export class ChatSession {
       const result = await this.agent.ask(message);
       return { text: result.text, toolCalls: result.toolCalls };
     } catch (error) {
+      // The MCP server restarted and forgot this agent's session (T4): start
+      // the agent again — a new session — and ask once more. The conversation
+      // so far is lost; the record is not.
+      if (isSessionLost(error)) {
+        await this.close().catch(() => undefined);
+        try {
+          this.agent = await createVouchAgent({ url: this.mcpUrl, model: resolveModelConfig()! });
+          const retry = await this.agent.ask(message);
+          return { text: retry.text, toolCalls: retry.toolCalls };
+        } catch (again) {
+          throw new Error(humanise(again));
+        }
+      }
       throw new Error(humanise(error));
     }
   }

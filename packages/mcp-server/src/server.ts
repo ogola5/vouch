@@ -1,7 +1,10 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from "node:crypto";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { registerVouchTools } from "./tools.ts";
+import { notifySubscribers, registerVouchResources } from "./resources.ts";
 import { handleHouseholdRequest } from "./household.ts";
 import type { VouchService } from "./service.ts";
 import type { HouseholdAgent } from "./householdAgent.ts";
@@ -13,13 +16,12 @@ import type { Study } from "./study.ts";
  * "Build with Agent Skills" docs point at, and the one the week-2
  * orchestrator's McpClient connects to.
  *
- * Stateless mode (`sessionIdGenerator: undefined`): a fresh transport and
- * McpServer per request, torn down when the response closes. The alternative
- * — long-lived sessions keyed by Mcp-Session-Id — buys resumability that
- * this project has no use for, since all durable state is in SQLite behind
- * VouchService rather than in transport memory. Statelessness also means a
- * demo recording survives a client reconnect, which is worth more here than
- * stream resumption.
+ * Sessions, keyed by Mcp-Session-Id (since 2026-10-14, BUILD_PLAN.md T4).
+ * This was stateless until resource subscriptions needed somewhere to push
+ * "the record changed". The reasoning that made stateless the first choice
+ * still holds and still shapes this: all durable state is in SQLite behind
+ * VouchService, never in a session, so a session holds only its transport and
+ * its subscriptions — and a client that reconnects simply initializes again.
  */
 
 export interface McpServerOptions {
@@ -43,7 +45,7 @@ export interface McpServerOptions {
   keepAliveMs?: number;
 }
 
-export function buildMcpServer(options: McpServerOptions): McpServer {
+export function buildMcpServer(options: McpServerOptions, subscriptions: Set<string> = new Set()): McpServer {
   const server = new McpServer(
     options.serverInfo ?? { name: "vouch", version: "0.0.0" },
     {
@@ -56,7 +58,17 @@ export function buildMcpServer(options: McpServerOptions): McpServer {
     }
   );
   registerVouchTools(server, options.service);
+  registerVouchResources(server, options.service, subscriptions);
   return server;
+}
+
+/** Sessions are cheap, but not free: a cap, and a sweep of the idle ones. */
+const MAX_SESSIONS = 100;
+const SESSION_IDLE_MS = 30 * 60_000;
+
+function jsonRpcError(res: ServerResponse, status: number, message: string): void {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message }, id: null }));
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -69,7 +81,22 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 }
 
 export function createVouchHttpServer(options: McpServerOptions): Server {
-  return createServer((req, res) => {
+  /*
+   * SESSIONS (BUILD_PLAN.md T4 — this replaced stateless mode, deliberately).
+   * A session holds only a transport and the resource URIs its client
+   * subscribed to, so the server has somewhere to push "the record changed".
+   * Everything durable is still in SQLite: losing a session loses a
+   * subscription, never a record. The SDK client sends Mcp-Session-Id by
+   * itself, so no client changed.
+   */
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; lastSeen: number }>();
+  const sweep = setInterval(() => {
+    const cutoff = Date.now() - SESSION_IDLE_MS;
+    for (const [, s] of sessions) if (s.lastSeen < cutoff) void s.transport.close();
+  }, 60_000);
+  sweep.unref();
+
+  const httpServer = createServer((req, res) => {
     void handle(req, res).catch((error: unknown) => {
       if (res.headersSent) {
         res.end();
@@ -118,8 +145,40 @@ export function createVouchHttpServer(options: McpServerOptions): Server {
       return;
     }
 
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
+    // An existing session: route to it (POST a message, GET the event
+    // stream, DELETE to end it).
+    const sessionId = req.headers["mcp-session-id"];
+    if (typeof sessionId === "string") {
+      const session = sessions.get(sessionId);
+      if (!session) {
+        // Per the spec: an unknown or ended session is a 404, and the client starts a new one.
+        jsonRpcError(res, 404, "Session not found — initialize a new one.");
+        return;
+      }
+      session.lastSeen = Date.now();
+      await session.transport.handleRequest(req, res, req.method === "POST" ? await readJsonBody(req) : undefined);
+      return;
+    }
+
+    // No session yet: only an initialize request may start one.
+    const body = req.method === "POST" ? await readJsonBody(req) : undefined;
+    if (!isInitializeRequest(body)) {
+      jsonRpcError(res, 400, "No session. Send an initialize request first.");
+      return;
+    }
+    if (sessions.size >= MAX_SESSIONS) {
+      jsonRpcError(res, 503, "Too many open sessions; try again shortly.");
+      return;
+    }
+
+    const subscriptions = new Set<string>();
+    const server = buildMcpServer(options, subscriptions);
+    const unsubscribe = options.service.onRecordChange((change) => notifySubscribers(server, subscriptions, change));
+    const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        sessions.set(id, { transport, lastSeen: Date.now() });
+      },
       // DNS rebinding protection is only meaningful with a host list, and a
       // host list is only knowable by the operator, so both are opt-in
       // together. Localhost development passes neither and is unaffected.
@@ -129,19 +188,21 @@ export function createVouchHttpServer(options: McpServerOptions): Server {
       ...(options.allowedOrigins?.length ? { allowedOrigins: options.allowedOrigins } : {}),
       keepAliveMs: options.keepAliveMs ?? 25_000,
     });
-    const server = buildMcpServer(options);
-
-    // Both are per-request in stateless mode, so they have to be released
-    // when the response finishes or a long-running demo leaks one McpServer
-    // per tool call.
-    res.on("close", () => {
-      void transport.close();
+    transport.onclose = () => {
+      unsubscribe();
+      if (transport.sessionId) sessions.delete(transport.sessionId);
       void server.close();
-    });
+    };
 
     await server.connect(transport);
-    await transport.handleRequest(req, res, await readJsonBody(req));
+    await transport.handleRequest(req, res, body);
   }
+
+  httpServer.on("close", () => {
+    clearInterval(sweep);
+    for (const [, s] of sessions) void s.transport.close();
+  });
+  return httpServer;
 }
 
 /**

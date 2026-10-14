@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { ResourceUpdatedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * A browser cannot speak MCP usefully — MCP is JSON-RPC with a session
@@ -26,10 +27,25 @@ export interface ToolTextResult {
   isError: boolean;
 }
 
+/** The record resource every change touches (mcp-server resources.ts). */
+const WAITING_URI = "vouch://records/waiting";
+
+/**
+ * True when our session is gone: the server forgot it (restarted, or swept
+ * us as idle — a 404, per the spec), or the connection it lived on was
+ * dropped. Either way the answer is a new session. Found by the restart test:
+ * the first error after a restart is usually the dropped socket, not the 404.
+ */
+export function isSessionLost(error: unknown): boolean {
+  const text = error instanceof Error ? `${error.message} ${String((error as { cause?: unknown }).cause ?? "")}` : String(error);
+  return /session not found|\b404\b|fetch failed|other side closed|ECONNRESET|socket hang up/i.test(text);
+}
+
 export class VouchBridge {
-  private readonly client: Client;
+  private client: Client;
   private readonly mcpUrl: string;
   private connected = false;
+  private readonly recordListeners = new Set<() => void>();
 
   constructor(mcpUrl: string) {
     this.mcpUrl = mcpUrl;
@@ -40,6 +56,16 @@ export class VouchBridge {
     if (this.connected) return;
     await this.client.connect(new StreamableHTTPClientTransport(new URL(this.mcpUrl)));
     this.connected = true;
+    /*
+     * T4: subscribe to what is waiting for the household. Every change to the
+     * record touches it, so the console hears about purchases it did not
+     * start — an outside agent's, the household agent's — and can show them
+     * at once. Best-effort: a server without subscriptions still works.
+     */
+    this.client.setNotificationHandler(ResourceUpdatedNotificationSchema, async () => {
+      for (const listener of this.recordListeners) listener();
+    });
+    await this.client.subscribeResource({ uri: WAITING_URI }).catch(() => undefined);
   }
 
   async close(): Promise<void> {
@@ -48,14 +74,39 @@ export class VouchBridge {
     this.connected = false;
   }
 
+  /** Called whenever the record changes on the server; returns an unsubscribe. */
+  onRecordChanged(listener: () => void): () => void {
+    this.recordListeners.add(listener);
+    return () => this.recordListeners.delete(listener);
+  }
+
+  /**
+   * Runs `call`, and if the server has forgotten our session (it restarted),
+   * starts a new one and tries once more. Stateless mode never needed this;
+   * sessions (T4) do.
+   */
+  private async withSession<T>(call: () => Promise<T>): Promise<T> {
+    await this.connect();
+    try {
+      return await call();
+    } catch (error) {
+      if (!isSessionLost(error)) throw error;
+      await this.client.close().catch(() => undefined);
+      this.client = new Client({ name: "vouch-web-app", version: "0.0.0" });
+      this.connected = false;
+      await this.connect();
+      return call();
+    }
+  }
+
   async listToolNames(): Promise<string[]> {
-    const { tools } = await this.client.listTools();
+    const { tools } = await this.withSession(() => this.client.listTools());
     return tools.map((t) => t.name);
   }
 
   /** Raw call — text content joined, with the tool's own error flag preserved. */
   async callTool(name: string, args: Record<string, unknown>): Promise<ToolTextResult> {
-    const result = await this.client.callTool({ name, arguments: args });
+    const result = await this.withSession(() => this.client.callTool({ name, arguments: args }));
     const content = (result.content ?? []) as { type: string; text?: string }[];
     const text = content
       .map((block) => block.text ?? "")
