@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { VouchService } from "./service.ts";
 
@@ -19,6 +20,33 @@ import type { VouchService } from "./service.ts";
  * which is the structural version of the brief's "real gate, not a caption".
  */
 
+/**
+ * MCP tool annotations (BUILD_PLAN.md T2): the hints a client — Alexa+ among
+ * them — uses to decide what to run freely and what to confirm with a person.
+ * In one table so they can be reviewed together. Hints, not guarantees: the
+ * guarantees are the gate and the absent approval tool.
+ *
+ *   readOnly     changes nothing
+ *   destructive  can do something that is not simply undone
+ *   idempotent   calling twice with the same arguments does no more than once
+ *   openWorld    reaches outside Vouch (the merchant)
+ */
+const HINTS = {
+  create_mandate: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  get_mandate: { readOnlyHint: true, openWorldHint: false },
+  list_mandates: { readOnlyHint: true, openWorldHint: false },
+  // Pausing only removes authority, and pausing twice is pausing once.
+  pause_mandate: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  search_catalog: { readOnlyHint: true, openWorldHint: true },
+  // Can place a real order with an outside merchant: the one a client should confirm.
+  propose_purchase: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+  // Narrows authority; a second dispute of the same Vouch is refused, not repeated.
+  record_dispute: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  list_vouches: { readOnlyHint: true, openWorldHint: false },
+  // Reads the record; the model it may call only rewords that record's own facts.
+  explain_vouch: { readOnlyHint: true, openWorldHint: false },
+} satisfies Record<string, ToolAnnotations>;
+
 /** MCP content blocks are text; structured payloads go through as pretty JSON. */
 function json(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -38,6 +66,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "create_mandate",
     {
       title: "Create a mandate",
+      annotations: HINTS.create_mandate,
       description:
         "Turn a household's plain-language standing instruction (\"keep detergent stocked, " +
         "under $15, monthly\") into a structured authority boundary that every later purchase " +
@@ -103,6 +132,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "get_mandate",
     {
       title: "Get a mandate",
+      annotations: HINTS.get_mandate,
       description:
         "Fetch one mandate, including its current confidence_threshold and history. Use this to " +
         "answer \"what am I allowed to do\" and to show before/after state when authority changes.",
@@ -116,7 +146,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
 
   server.registerTool(
     "list_mandates",
-    { title: "List mandates", description: "Every mandate this household has set, oldest first." },
+    { title: "List mandates", annotations: HINTS.list_mandates, description: "Every mandate this household has set, oldest first." },
     async () => json(service.listMandates())
   );
 
@@ -124,6 +154,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "pause_mandate",
     {
       title: "Pause or resume a mandate",
+      annotations: HINTS.pause_mandate,
       description:
         "Pausing suspends the agent's authority without deleting the mandate — a paused mandate " +
         "holds every proposal for approval rather than silently allowing them.",
@@ -146,6 +177,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "search_catalog",
     {
       title: "See what the merchant sells",
+      annotations: HINTS.search_catalog,
       description:
         "Find real products and their current prices. Call this BEFORE propose_purchase — " +
         "product_id must be an id returned here, and guessing one will fail. Prices are in " +
@@ -174,6 +206,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "propose_purchase",
     {
       title: "Propose a purchase (gated)",
+      annotations: HINTS.propose_purchase,
       description:
         "The only way to buy anything. Opens a real UCP checkout session, brings it to " +
         "ready_for_complete, then checks the mandate BEFORE placing the order. If the proposal " +
@@ -253,6 +286,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "record_dispute",
     {
       title: "Dispute a vouch",
+      annotations: HINTS.record_dispute,
       description:
         'The household says "I didn\'t want that". Records the dispute on the Vouch and tightens ' +
         "the mandate's confidence_threshold, so the next borderline proposal in this category is " +
@@ -279,6 +313,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "list_vouches",
     {
       title: "List vouches",
+      annotations: HINTS.list_vouches,
       description:
         'The household\'s record of what the agent did — answers "what did you buy me this month". ' +
         "Newest first. Includes held and disputed actions, not just completed purchases.",
@@ -295,6 +330,7 @@ export function registerVouchTools(server: McpServer, service: VouchService): vo
     "explain_vouch",
     {
       title: "Explain a vouch",
+      annotations: HINTS.explain_vouch,
       description:
         'Plain-language account of one action — answers "why did you buy this" and "why didn\'t ' +
         'you buy the $27 one". For a held purchase it names the boundary that stopped it.',

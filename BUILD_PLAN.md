@@ -969,6 +969,11 @@ there was no CI.
 Rehearsed on a clean clone (no node_modules, dist or .env): 348 pass, 0 fail, 9 live tests skipped.
 It runs on GitHub from the next push.
 
+**T2 DONE 2026-10-14.** All 9 tools carry MCP annotations, from one reviewable table (`HINTS` in
+tools.ts). Only `propose_purchase` is destructive. It is also open-world and not idempotent: the
+one a client should confirm with a person. The read tools say read-only. A test checks the
+annotations as a client receives them over MCP, including that nothing else is destructive.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

@@ -139,6 +139,26 @@ describe("the tool surface an orchestrator actually sees", () => {
   });
 });
 
+describe("tool annotations, as a client receives them (T2)", () => {
+  it("marks every tool, and marks the one that can spend money as needing a person", async () => {
+    const { tools } = await rig.client.listTools();
+    for (const t of tools) assert.ok(t.annotations, `${t.name} has no annotations`);
+    const hint = (name: string) => tools.find((t) => t.name === name)!.annotations!;
+
+    // The only tool that can place an order: destructive, reaches the merchant, not repeatable.
+    assert.deepEqual(
+      [hint("propose_purchase").readOnlyHint, hint("propose_purchase").destructiveHint, hint("propose_purchase").openWorldHint, hint("propose_purchase").idempotentHint],
+      [false, true, true, false]
+    );
+    // Everything that only reads says so, so a client can run it without asking.
+    for (const name of ["get_mandate", "list_mandates", "list_vouches", "explain_vouch", "search_catalog"]) {
+      assert.equal(hint(name).readOnlyHint, true, name);
+    }
+    // Nothing but propose_purchase is destructive.
+    assert.deepEqual(tools.filter((t) => t.annotations?.destructiveHint).map((t) => t.name), ["propose_purchase"]);
+  });
+});
+
 describe("search_catalog — the tool the first live agent run proved was missing", () => {
   it("returns real, usable product ids", async () => {
     const products = await call<{ product_id: string; brand: string; price: number }[]>(
