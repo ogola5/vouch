@@ -32,7 +32,8 @@ What no one gives a *household* is the thing between "set and forget" and "do it
 1. **You decide what it may do, item by item.** *Remind* tells you. *Ask* suggests an order and
    waits. *Auto* buys within your limits and tells you after. Trust is earned: after four "yes"es
    it offers to take an item on, for 90 days. Trust is lost at once: a dispute moves the item back
-   to Ask.
+   to Ask. Each item shows its **trust history** as a line across Remind, Ask and Auto, so you can
+   see where it was handed over and where it was taken back.
 2. **It knows when you're running low.** A per-item forecast learns your home's pace from what you
    actually bought, and from a one-tap "how much is left?". It buys when the chance of running out
    before delivery reaches 1 in 5, inside the delivery days you choose.
