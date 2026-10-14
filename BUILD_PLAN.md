@@ -883,6 +883,19 @@ comparison narrated rather than real.
   `autonomy_not_granted`, so the card first said the check was "not checked then". Checks are now
   compared by family.
 
+**S2 DONE 2026-10-14 — voice.**
+- **The mic:** the button uses the browser's SpeechRecognition. It is feature-detected, so it's
+  hidden where unsupported, and disabled with the chat when there's no model.
+- **Spoken replies:** "Read replies aloud" uses speechSynthesis. It switches on when you speak, as
+  a voice assistant would, and the "Why?" answers are spoken too.
+- **Trimmed for listening:** `forVoice()` removes record ids and markdown and stops at about 240
+  characters, at a sentence end.
+- **Found by its test:** the first sentence splitter broke "$27.80" at the decimal point.
+- **Disclosed** in the console and README: Chrome and Edge send recognition audio to their own
+  cloud.
+- **Not verified here:** a real microphone in a real browser. The headless browser has none. This
+  needs one try by the owner.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

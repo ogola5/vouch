@@ -374,6 +374,11 @@
   .step.failed { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
   .arrow { color: var(--faint); font-size: 11px; }
   .composer { display: flex; gap: 8px; }
+  .mic { flex: none; width: 44px; padding: 0; display: grid; place-items: center; border-radius: 50%; }
+  .mic svg { width: 20px; height: 20px; }
+  .mic[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); color: #fff; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bad) 45%, transparent); } 50% { box-shadow: 0 0 0 8px transparent; } }
+  .voice-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
   .composer input { flex: 1; padding: 11px 13px; }
   .chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
   .chip-btn { border-radius: 999px; color: var(--muted); background: var(--sunk); }
@@ -762,8 +767,15 @@
           </div>
         </div>
         <div class="composer">
+          <button class="mic" id="chatMic" hidden aria-pressed="false" aria-label="Speak to your agent" title="Speak to your agent">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z" fill="currentColor"/></svg>
+          </button>
           <input id="chatInput" placeholder="Keep detergent stocked, under $15 a month…" autocomplete="off" />
           <button class="primary" id="chatSend">Send</button>
+        </div>
+        <div class="voice-row" id="voiceRow" hidden>
+          <label class="check meta"><input type="checkbox" id="speakReplies"> Read replies aloud</label>
+          <span class="fine" style="margin:0">Voice uses your browser's own speech service — in Chrome and Edge, recognition runs in the browser maker's cloud.</span>
         </div>
         <!-- Examples, not a menu: they show the range, they are not the only way in. -->
         <div class="chips" id="chips">
@@ -1894,6 +1906,7 @@ async function explain(vouchId) {
     const byModel = /^Written by the model/.test(source);
     slot.innerHTML = `<div class="explain"><div class="eyebrow">${byModel ? "In plain words — written by the model, checked against the record" : "From the record"}</div>${esc(lines.join("\n"))}
       ${source ? `<div class="meta" style="margin-top:6px">${esc(source)}</div>` : ""}</div>`;
+    speak(lines.join(" "));
   } catch (e) { slot.innerHTML = `<div class="explain">${esc(e.message)}</div>`; }
   renderTour();
 }
@@ -2104,10 +2117,13 @@ async function say(message) {
         ? `<div class="work"><span class="who">what it did</span>${body.toolCalls.map(renderStep).join('<span class="arrow">→</span>')}</div>`
         : `<div class="work"><span class="who">answered without touching the system</span></div>`;
       wrap.querySelector(".thinking").outerHTML = `${work}<div class="replied">${esc(body.text)}</div>`;
+      speak(body.text);
     }
+    if (!res.ok) speak("Sorry, I couldn't answer. " + (body.error ?? "")); // spoken, never markup
   } catch (e) {
     wrap.querySelector(".thinking").outerHTML =
       `<div class="replied"><span class="badge bad">couldn't answer</span> ${esc(e.message)}</div>`;
+    speak("Sorry, I couldn't answer that.");
   } finally {
     chatBusy = false;
     $("chatSend").disabled = false;
@@ -2117,6 +2133,100 @@ async function say(message) {
     // the demo's whole payoff.
     await refresh();
   }
+}
+
+/* ---------- voice (S2): the Alexa+ stand-in, spoken ---------- */
+
+/*
+ * Alexa is voice-first, so the stand-in should be too. The browser's own
+ * speech recognition and speech synthesis — no dependency, and nothing sent
+ * by this app. (In Chrome and Edge the BROWSER sends recognition audio to
+ * its maker's cloud; the page says so.) Speaking switches "read replies
+ * aloud" on, as a voice assistant would; replies are trimmed for listening.
+ */
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let listening = null;
+
+/** A reply as it should be heard: no ids, no markdown, a couple of sentences. */
+function forVoice(text) {
+  const plain = String(text ?? "")
+    .replace(/`[^`]*`/g, "")
+    .replace(/\b(vouch|mandate|ord|order|sess|study)_[A-Za-z0-9-]+/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[*_#>]+/g, "")
+    .replace(/\s*·\s*/g, ", ")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  // A "." between digits is a price ($27.80), not the end of a sentence.
+  const sentences = plain.match(/(?:[^.!?]|\.(?=\d))+(?:[.!?]+|$)/g) ?? [plain];
+  let out = "";
+  for (const s of sentences) {
+    if (out && (out + s).length > 240) break;
+    out += s;
+  }
+  return out.trim();
+}
+
+function speak(text) {
+  if (!$("speakReplies").checked || !("speechSynthesis" in window)) return;
+  const words = forVoice(text);
+  if (!words) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(words);
+  u.rate = 1.03;
+  speechSynthesis.speak(u);
+}
+
+function setSpeak(on) {
+  $("speakReplies").checked = on;
+  try { localStorage.setItem("vouch.speak", on ? "1" : "0"); } catch { /* per-visit only */ }
+}
+
+if (Recognition || "speechSynthesis" in window) {
+  $("voiceRow").hidden = false;
+  setSpeak(readPref("vouch.speak") === "1");
+  $("speakReplies").addEventListener("change", () => {
+    setSpeak($("speakReplies").checked);
+    if (!$("speakReplies").checked && "speechSynthesis" in window) speechSynthesis.cancel();
+  });
+}
+
+if (Recognition) {
+  $("chatMic").hidden = false;
+  $("chatMic").addEventListener("click", () => {
+    if (listening) { listening.stop(); return; }
+    if ("speechSynthesis" in window) speechSynthesis.cancel(); // don't transcribe ourselves
+    const rec = new Recognition();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    let final = "";
+    rec.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      $("chatInput").value = (final + interim).trim();
+    };
+    rec.onerror = (e) => {
+      if (e.error !== "aborted" && e.error !== "no-speech") {
+        toast(e.error === "not-allowed" ? "The browser blocked the microphone — allow it for this site." : `Couldn't hear that (${e.error}).`, true);
+      }
+    };
+    rec.onend = () => {
+      listening = null;
+      $("chatMic").setAttribute("aria-pressed", "false");
+      if (final.trim()) {
+        setSpeak(true); // spoke to it, so it answers out loud — as Alexa would
+        say(final.trim());
+      }
+    };
+    listening = rec;
+    $("chatMic").setAttribute("aria-pressed", "true");
+    rec.start();
+  });
 }
 
 $("chatSend").addEventListener("click", () => say($("chatInput").value));
@@ -2135,6 +2245,7 @@ async function chatBanner() {
       $("modelPill").textContent = `Agent: ${chat.model}`;
     }
     const banner = $("chatBanner");
+    $("chatMic").disabled = !chatReady;
     if (chatReady) {
       banner.hidden = true;
       $("chatInput").disabled = false;

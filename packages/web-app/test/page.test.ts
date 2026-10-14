@@ -326,6 +326,38 @@ describe("the console page holds together", () => {
     assert.ok(!/\$\{c\.detail\}|\$\{r\.reason\}/.test(fn), "server text is escaped");
   });
 
+  it("lets you speak to the stand-in and hear it answer, saying where the audio goes (S2)", () => {
+    const code = withoutComments(scriptBody());
+    // Feature-detected: no mic button where the browser can't listen.
+    assert.match(code, /window\.SpeechRecognition \|\| window\.webkitSpeechRecognition/);
+    assert.match(html, /id="chatMic" hidden/);
+    assert.match(html, /in Chrome and Edge, recognition runs in the browser maker's cloud/);
+    // Speaking to it switches spoken replies on; the "why?" answer is spoken too.
+    assert.match(code, /setSpeak\(true\);[^\n]*\n\s*say\(final\.trim\(\)\)/);
+    assert.match(code, /speak\(lines\.join\(" "\)\)/);
+  });
+
+  it("trims a reply for listening: no record ids, no markdown, a couple of sentences", () => {
+    const code = withoutComments(scriptBody());
+    const src = /function forVoice\(text\) \{[\s\S]*?\n\}/.exec(code)?.[0];
+    assert.ok(src, "forVoice exists");
+    const forVoice = new Function(`${src}; return forVoice;`)() as (t: string) => string;
+    assert.equal(
+      forVoice("I stopped before buying **Brand C** (vouch_8da04506-2a67) at $27.80. It is over your $15.00 limit."),
+      "I stopped before buying Brand C at $27.80. It is over your $15.00 limit."
+    );
+    // Long replies stop at a sentence end — never inside a price.
+    const long = forVoice(
+      "I stopped before buying Brand C at $27.80. It is over your $15.00 limit and a brand you have not approved. " +
+        "The checkout is parked one step short of an order, so nothing was bought and nothing was charged. " +
+        "You can approve it with your passkey or keep it blocked from the record, whichever you prefer."
+    );
+    assert.ok(long.length <= 240, long);
+    assert.match(long, /\$27\.80\..*\.$/);
+    assert.ok(!/\$27\.$/.test(long) && !long.includes("You can approve"), long);
+    assert.equal(forVoice("Checked · bought · done."), "Checked, bought, done.");
+  });
+
   it("works on a phone-width screen", () => {
     assert.match(html, /<meta name="viewport"/);
     assert.match(html, /prefers-color-scheme: dark/);
