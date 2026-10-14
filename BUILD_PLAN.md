@@ -924,6 +924,15 @@ about two days of the Oct 14–18 video window.
 **W9 — Verify every [reported] fact in §5c in a browser (½ day)** — Auto Buy's 24h cancel, the
 $12B figure — and update the README's real/simulated table.
 
+**W9 DONE 2026-10-14.** Every [reported] claim the writeup needs was checked against a primary or
+first-hand source; §5c holds the results. Outcomes:
+- **Confirmed:** Rufus's $12B and 300M+, from Amazon's results (primary). Mastercard Verifiable
+  Intent (primary).
+- **Corrected:** ACP launched 2025-09-29, not Feb 2026. Auto Buy *is* confirmed at set-up, just
+  not at purchase.
+- **Dropped:** "up to 200 active requests", and Verifiable Intent's "new dispute grounds".
+- No user-facing text repeated a corrected claim.
+
 **W10 — Video, writeup, developer feedback (2026-10-14 → 10-22).** The 3-minute video follows the
 demo script below. The writeup leads with the thesis above, cites AP2/Mastercard as the foundation,
 publishes the simulation's trade-off curve and the gate-discipline measurement, and states every
@@ -1070,15 +1079,25 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
 **Amazon today — autonomous buying is live, not coming.**
 - Rufus gained auto-buy in Nov 2025 [reported]. Q1 2026 call: "Rufus can research products, track
   prices, and auto-buy products in our store when they reach a set price"; MAU up 115%,
-  engagement up ~400% YoY [primary, aboutamazon.com]. ~$12B incremental annualized sales, 300M+
-  customers [reported, Yahoo Finance / Modern Retail — confirm].
+  engagement up ~400% YoY [primary, aboutamazon.com]. **Confirmed in W9 (2026-10-14) [primary,
+  Amazon Q4 2025 results, 2026-02-05]:** "Rufus was used by 300 million+ customers" and helped
+  deliver "nearly $12 billion in incremental annualized sales last year". That is Amazon's own
+  estimate, not a revenue line, so say "Amazon says".
 - Alexa+ open to everyone in the US 2026-02-04; free with Prime, $19.99/mo otherwise; free chat
   tier on Alexa.com [primary + TechCrunch].
 - **Alexa for Shopping, 2026-05-13:** Rufus and Alexa+ merged into the Amazon search bar; auto-buy
   at a target price, price alerts, Scheduled Actions, carts; app, web, Echo Show [primary].
 - **Auto Buy:** "complete your purchase using your default payment method" at the target price
-  [primary]. No confirmation step; notified after; cancel within 24h in Your Orders; Prime only;
-  up to 200 active requests [reported, citing Amazon's help page — confirm].
+  [primary]. Checked in W9 (2026-10-14) against Modern Retail, 2025-11-13, which **tested it
+  first-hand**:
+  - The shopper **confirms once, when setting the request up** (an "Auto Buy" checkbox), and
+    **not when it buys**. The earlier wording, "no confirmation step", was too strong; use "no
+    confirmation when it buys".
+  - The fine print says "24 hours to cancel before it ships". Use "a 24-hour cancel window".
+  - "Available to all U.S. Prime members through the Amazon app" [first-hand report].
+  - "Monitors prices every 30 minutes" [Amazon's announcement, as quoted].
+  - **"Up to 200 active requests": not found; do not use.** Later coverage says one request per
+    item and one unit [reported].
 - **Scheduled Actions stop at the cart:** "will either notify you or add relevant items directly
   to your cart… so all you have to do is review and check out" [primary]. Triggers are calendar
   or price rules ("…if I haven't purchased it in the last 2 months") [primary] — not consumption.
@@ -1091,13 +1110,22 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
   **Intent Mandate** ("price limits, timing, and other conditions") and **Cart Mandate**; a
   "non-repudiable audit trail". The announcement describes **no** mechanism that changes an
   agent's authority from outcomes, and **no** consumer-facing record [primary].
-- **Mastercard Verifiable Intent** (2026, with Google): tamper-resistant record of identity,
-  instruction and outcome; new dispute grounds incl. "unauthorized agent action within an
-  authorized mandate". Its dispute is a *payment* dispute [reported].
+- **Mastercard Verifiable Intent**, with Google. **Confirmed in W9 [primary, mastercard.com]:**
+  - announced **2026-03-05**;
+  - an "open, standards-based trust layer" producing a tamper-resistant record of what the user
+    authorized;
+  - aligned with AP2 and UCP, and protocol-agnostic;
+  - selective disclosure for fraud checks and disputes;
+  - to be integrated into Agent Pay "in the coming months".
+
+  The "new dispute grounds" detail was **not found**, so leave it out. The positioning still
+  holds, and matters more now: it *records* what was authorized; Vouch *changes* the authorization
+  after something goes wrong.
 - **Visa Intelligent Commerce / Mastercard Agent Pay:** agent-scoped tokens with spend caps,
   merchant limits, expiry [reported].
-- **OpenAI + Stripe ACP / Instant Checkout** (live Feb 2026): merchant-facing checkout protocol
-  [reported].
+- **OpenAI + Stripe ACP / Instant Checkout:** merchant-facing checkout protocol. **Corrected in W9
+  (2026-10-14) [primary, Stripe newsroom]:** it launched **2025-09-29**, not "Feb 2026". At launch
+  it was US-only, for Etsy sellers, single-item, and uses a Shared Payment Token.
 - **spendlatch — same hackathon, same Alexa+ track** [primary, its GitHub]: self-hosted MCP
   server, simulated Alexa+, HMAC-signed single-use mandates bound to an authenticated session,
   MCP Apps approval card in chat, every refusal logged. Domain is team cloud/SaaS spend, not
@@ -1110,9 +1138,11 @@ stating as fact (Amazon's help page and Mastercard's page refused automated read
   agent may do, why it did it, and how that changes when it gets it wrong."*
 - Lead with the one thing none of the above describe: **"Their dispute gets your money back.
   Ours changes what the agent is allowed to do next time."**
-- Aim the problem statement at Amazon's real flow: Auto Buy notifies after the fact, offers a
-  24h cancel [reported], and nothing public says it learns; Scheduled Actions still end at
-  "review and check out" [primary].
+- Aim the problem statement at Amazon's real flow, in the wording W9 checked:
+  - Auto Buy is confirmed once when set up, then buys with no confirmation when the price hits,
+    with a 24-hour cancel window [first-hand report, Modern Retail];
+  - nothing public says it learns;
+  - Scheduled Actions still end at "review and check out" [primary].
 
 ## 6. Noticed, not scoped
 
