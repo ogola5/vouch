@@ -1043,6 +1043,32 @@ none.
 SUBMISSION.md describes the MCP depth and CI. **Not yet verified:** how GitHub renders the
 diagrams, which needs a push.
 
+**Round 3, approved by the owner 2026-10-14**: strengthen Design, Potential Impact and Quality of
+the Idea.
+- **D1 — The device speaks first.** A held purchase raises a "Needs your OK" banner on every view,
+  including TV, and is *spoken* when voice is on. "Keep it blocked" works by voice, because it only
+  narrows; approving still needs the passkey, and the screen says why.
+- **P1 — "Who it's for and how it ships"** in SUBMISSION.md, using verified facts only.
+- **P2 — A study kit** for W7: facilitator script, recruiting message, and how to export and
+  report.
+- **Q1 — AP2 alignment, shown:** a mandate exported in AP2 Intent Mandate shape. Only if AP2's
+  primary spec gives the fields; otherwise skipped and noted.
+
+**D1 DONE 2026-10-14.**
+- **The banner:** a held purchase raises "Needs your OK" (`role="alert"`) on every view except
+  Home, which already leads with it. It is large on the TV, has Show me and Keep it blocked, and
+  says "Approving needs your passkey — the agent can't approve anything".
+- **Spoken:** a *new* hold is spoken when replies are on.
+- **Voice can narrow, never widen:** saying "keep it blocked" declines the newest held purchase.
+  "Approve" by voice is answered, never obeyed: "Approving spends money, so it needs your passkey —
+  not your voice". `voiceIntent` is tested on real phrases, and a test checks that the voice path
+  cannot reach approve.
+- **Found while screenshotting, a real bug introduced in T4:** the page's first data request and
+  its live stream both called `bridge.connect()` at once, which could open two sessions on one
+  client and stall the page half-rendered. `connect()` now shares one in-flight attempt. The new
+  concurrency test fails without the fix and passes with it.
+- **`?live=0`** turns live updates off for headless screenshots, which wait for a quiet network.
+
 **W7 — Real people (owner's time, in parallel with W5-W6).** 5-8 people, 15 minutes each, via study
 mode. Reported exactly as n, who they were, and what they said. Also: time Amazon's real cancel
 flow once with a stopwatch, as the first-hand baseline for "one sentence instead".

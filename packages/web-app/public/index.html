@@ -162,6 +162,21 @@
   .jump-card b::after { content: " →"; color: var(--accent); }
   .jump-card span { font-size: 13px; color: var(--muted); }
 
+  /* ---------- D1: "Needs your OK" ---------- */
+  .needs-ok { margin-top: 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
+              padding: 14px 18px; border-radius: var(--radius); border: 1.5px solid var(--hold); background: var(--hold-bg);
+              box-shadow: var(--shadow-lift); animation: rise .25s ease; }
+  .needs-ok .no-icon { font-size: 26px; }
+  .needs-ok .no-title { font-weight: 700; color: var(--hold); }
+  .needs-ok .no-why { font-size: 13.5px; }
+  .needs-ok .no-rule { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .needs-ok .actions { margin: 0; flex-wrap: nowrap; }
+  body[data-view="home"] .needs-ok { display: none; } /* Home already leads with it */
+  body[data-view="tv"] .needs-ok { font-size: 20px; padding: 22px 28px; background: #33291a; color: #f2f1ec; border-color: #e8b464; }
+  body[data-view="tv"] .needs-ok .no-title { color: #e8b464; font-size: 24px; }
+  body[data-view="tv"] .needs-ok .no-rule { color: #c9c4b9; }
+  @media (max-width: 720px) { .needs-ok { grid-template-columns: 1fr; } .needs-ok .no-icon { display: none; } }
+
   /* ---------- the TV view (W8): dark, large, D-pad friendly ---------- */
   .tv { --tv-bg: #0f1113; --tv-panel: #1a1d21; --tv-ink: #f2f1ec; --tv-muted: #a9a59c; --tv-line: #2c3036;
         background: var(--tv-bg); color: var(--tv-ink); border-radius: 20px; padding: clamp(20px, 3vw, 44px);
@@ -539,6 +554,9 @@
       <button class="small ghost" id="presenterToggle" aria-pressed="false" title="Show the guided tour, study mode and demo controls">Presenter</button>
     </div>
   </header>
+
+  <!-- D1: a held purchase announces itself, on every view -->
+  <div class="needs-ok" id="needsOk" role="alert" hidden></div>
 
   <!-- PRESENTER DOCK: the tour and study mode — demo machinery, hidden unless asked for -->
   <section class="dock presenter-only" aria-labelledby="tourTitle">
@@ -1983,6 +2001,80 @@ async function approve(vouchId) {
 }
 
 // "Keep it blocked" only narrows: the parked checkout is cancelled. No passkey.
+/* ---------- D1: the household device speaks first ---------- */
+
+/*
+ * When the gate holds a purchase, the household should not have to go
+ * looking: a banner on every view (large on the TV), and — with voice on —
+ * the device says it, the way an Alexa device announces. The interaction
+ * rule is the project's rule, made audible: voice may take power away
+ * ("keep it blocked"), it may never grant it. Approving spends money the
+ * gate refused to spend, so it needs the passkey, and the device says so.
+ */
+let knownHeld = null;
+const dismissedHeld = new Set();
+
+function heldSentence(v) {
+  const why = (v.authority.triggered_rules ?? []).map(ruleText).join(", ") || "outside what you allowed";
+  return `A purchase needs your OK: ${productTitle(v.decision.product)}, ${money(v.decision.price)}. ` +
+    `It was held because it is ${why}. Nothing was bought. Say "keep it blocked", or approve it with your passkey.`;
+}
+
+function announceHeld() {
+  const held = state.vouches.filter((v) => v.action.status === "PendingApproval");
+  const fresh = knownHeld ? held.filter((v) => !knownHeld.has(v.vouch_id)) : [];
+  knownHeld = new Set(held.map((v) => v.vouch_id));
+  const show = held.find((v) => !dismissedHeld.has(v.vouch_id));
+  const el = $("needsOk");
+  if (!show) { el.hidden = true; return; }
+  const why = (show.authority.triggered_rules ?? []).map(ruleText).join(" · ") || "outside what you allowed";
+  el.innerHTML = `
+    <div class="no-icon" aria-hidden="true">✋</div>
+    <div>
+      <div class="no-title">Needs your OK${held.length > 1 ? ` · ${held.length} waiting` : ""}</div>
+      <div class="no-why"><b>${esc(productTitle(show.decision.product))}</b> · ${esc(money(show.decision.price))} — ${esc(why)}. No order was placed.</div>
+      <div class="no-rule">You can keep it blocked by voice or here. Approving needs your passkey — the agent can't approve anything.</div>
+    </div>
+    <div class="actions">
+      <button class="small" data-no-show="${esc(show.vouch_id)}">Show me</button>
+      <button class="small" data-no-block="${esc(show.vouch_id)}">Keep it blocked</button>
+      <button class="small ghost" data-no-dismiss="${esc(show.vouch_id)}" aria-label="Dismiss">✕</button>
+    </div>`;
+  el.hidden = false;
+  el.querySelector("[data-no-show]").addEventListener("click", () => reveal(document.getElementById(`vouch-${show.vouch_id}`)));
+  el.querySelector("[data-no-block]").addEventListener("click", () => decline(show.vouch_id));
+  el.querySelector("[data-no-dismiss]").addEventListener("click", () => { dismissedHeld.add(show.vouch_id); announceHeld(); });
+  if (fresh.length) speak(heldSentence(fresh[0]));
+}
+
+/**
+ * What a spoken sentence asks for, when it is about a held purchase: "block"
+ * (narrows — done at once), "approve" (widens — refused by voice, by design),
+ * or null (anything else goes to the agent as usual).
+ */
+function voiceIntent(text) {
+  const t = String(text ?? "").toLowerCase();
+  if (/\b(keep (it|that) blocked|keep blocking|block (it|that)|don'?t buy (it|that)|cancel (it|that)|no,? (don'?t|do not))\b/.test(t)) return "block";
+  if (/\b(approve|go ahead and buy|buy it anyway|yes,? buy)\b/.test(t)) return "approve";
+  return null;
+}
+
+/** Handles a spoken held-purchase command; true if it was one. */
+async function handleVoiceIntent(text) {
+  const held = state.vouches.find((v) => v.action.status === "PendingApproval");
+  const intent = held ? voiceIntent(text) : null;
+  if (!intent) return false;
+  if (intent === "block") {
+    await decline(held.vouch_id);
+    speak(`Kept blocked. ${productTitle(held.decision.product)} was not bought.`);
+  } else {
+    reveal(document.getElementById(`vouch-${held.vouch_id}`));
+    speak("Approving spends money, so it needs your passkey — not your voice. Tap Approve, and your device will ask.");
+    toast("Approving needs your passkey — tap Approve on the purchase.");
+  }
+  return true;
+}
+
 async function decline(vouchId) {
   try {
     await household(`vouches/${encodeURIComponent(vouchId)}/decline`, { method: "POST", body: "{}" });
@@ -2268,11 +2360,14 @@ if (Recognition) {
         toast(e.error === "not-allowed" ? "The browser blocked the microphone — allow it for this site." : `Couldn't hear that (${e.error}).`, true);
       }
     };
-    rec.onend = () => {
+    rec.onend = async () => {
       listening = null;
       $("chatMic").setAttribute("aria-pressed", "false");
       if (final.trim()) {
         setSpeak(true); // spoke to it, so it answers out loud — as Alexa would
+        // "Keep it blocked" is the household's own power and is done at once;
+        // "approve" is refused by voice (D1). Anything else goes to the agent.
+        if (await handleVoiceIntent(final.trim())) { $("chatInput").value = ""; return; }
         say(final.trim());
       }
     };
@@ -2983,6 +3078,7 @@ async function refresh() {
     // The household first: vouch cards read its clock to date "bought on its own" lines.
     await refreshHousehold();
     renderCatalog(); renderMandates(); renderSelectors(); renderPending(); renderVouches(); renderTour();
+    announceHeld();
     const held = state.vouches.filter((v) => v.action.status === "PendingApproval").length;
     $("tabHeld").hidden = held === 0;
     $("tabHeld").textContent = String(held);
@@ -3008,23 +3104,23 @@ let retrying = false;
  * Debounced: a burst of changes is one refresh. EventSource reconnects on its own.
  */
 let liveTimer = null;
-let heldBefore = null;
 function startLive() {
   if (typeof EventSource === "undefined") return;
+  // ?live=0 turns live updates off — for headless screenshots, which wait for
+  // a quiet network that an open event stream never gives them.
+  if (new URLSearchParams(location.search).get("live") === "0") return;
   const events = new EventSource("/api/events");
   events.addEventListener("record", () => {
     clearTimeout(liveTimer);
-    liveTimer = setTimeout(async () => {
-      if (chatBusy) return; // the chat refreshes when it finishes
-      await refresh();
-      const held = state.vouches.filter((v) => v.action.status === "PendingApproval").length;
-      if (heldBefore !== null && held > heldBefore) toast("Something new is waiting for you.");
-      heldBefore = held;
+    liveTimer = setTimeout(() => {
+      // The chat refreshes when it finishes; otherwise refresh, and a newly
+      // held purchase announces itself (announceHeld, D1).
+      if (!chatBusy) refresh();
     }, 250);
   });
 }
 
-refresh().then(() => { heldBefore = state.vouches.filter((v) => v.action.status === "PendingApproval").length; });
+refresh();
 chatBanner();
 loadPasskey();
 loadReplay();

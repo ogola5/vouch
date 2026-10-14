@@ -45,6 +45,8 @@ export class VouchBridge {
   private client: Client;
   private readonly mcpUrl: string;
   private connected = false;
+  /** The connection in progress, shared: two callers at once must not start two sessions. */
+  private connecting: Promise<void> | null = null;
   private readonly recordListeners = new Set<() => void>();
 
   constructor(mcpUrl: string) {
@@ -52,8 +54,19 @@ export class VouchBridge {
     this.client = new Client({ name: "vouch-web-app", version: "0.0.0" });
   }
 
-  async connect(): Promise<void> {
-    if (this.connected) return;
+  /*
+   * Idempotent under concurrency. The page's first data request and its live
+   * event stream arrive together, and both connect; checking `connected`
+   * alone let both start a session on one client. (Found when a page load
+   * stalled half-rendered; see the live test.)
+   */
+  connect(): Promise<void> {
+    if (this.connected) return Promise.resolve();
+    this.connecting ??= this.open().finally(() => { this.connecting = null; });
+    return this.connecting;
+  }
+
+  private async open(): Promise<void> {
     await this.client.connect(new StreamableHTTPClientTransport(new URL(this.mcpUrl)));
     this.connected = true;
     /*

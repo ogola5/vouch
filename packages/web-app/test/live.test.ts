@@ -61,6 +61,19 @@ describe("the console, live (T4)", () => {
     await bridge.close();
   });
 
+  it("opens one session when several requests connect at once", async () => {
+    // The page's first data request and its event stream arrive together.
+    const merchant = await startMerchantServer(0);
+    const store = VouchStore.open(":memory:");
+    const mcp = await stack(store, merchant.url);
+    toClose.push(merchant.server, store, mcp.server, mcp.householdServer);
+    const bridge = new VouchBridge(`${mcp.url}/mcp`);
+    await Promise.all([bridge.connect(), bridge.connect(), bridge.connect()]);
+    const names = await Promise.all([bridge.listToolNames(), bridge.listToolNames()]);
+    assert.ok(names.every((n) => n.includes("propose_purchase")));
+    await bridge.close();
+  });
+
   it("streams a change to the page when an outside client's purchase is held", async () => {
     const merchant = await startMerchantServer(0);
     const store = VouchStore.open(":memory:");

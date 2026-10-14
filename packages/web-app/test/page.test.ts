@@ -333,7 +333,8 @@ describe("the console page holds together", () => {
     assert.match(html, /id="chatMic" hidden/);
     assert.match(html, /in Chrome and Edge, recognition runs in the browser maker's cloud/);
     // Speaking to it switches spoken replies on; the "why?" answer is spoken too.
-    assert.match(code, /setSpeak\(true\);[^\n]*\n\s*say\(final\.trim\(\)\)/);
+    // (D1 checks for "keep it blocked" in between; replies are on either way.)
+    assert.match(code, /setSpeak\(true\);[\s\S]{0,400}?say\(final\.trim\(\)\)/);
     assert.match(code, /speak\(lines\.join\(" "\)\)/);
   });
 
@@ -412,7 +413,35 @@ describe("the console page holds together", () => {
     const code = withoutComments(scriptBody());
     assert.match(code, /new EventSource\("\/api\/events"\)/);
     assert.match(code, /addEventListener\("record"/);
-    assert.match(code, /Something new is waiting for you/);
+  });
+
+  it("announces a held purchase on every view, and says approving needs the passkey (D1)", () => {
+    const code = withoutComments(scriptBody());
+    assert.match(html, /<div class="needs-ok" id="needsOk" role="alert" hidden>/);
+    const fn = /function announceHeld\(\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.match(fn, /if \(fresh\.length\) speak\(heldSentence\(fresh\[0\]\)\)/, "only a NEW hold is spoken");
+    assert.match(fn, /Approving needs your passkey/);
+    assert.match(fn, /data-no-block/);
+    assert.ok(!/approve\(/.test(fn), "the banner must never approve");
+    assert.match(code, /renderTour\(\);\s*announceHeld\(\);/);
+  });
+
+  it("lets voice narrow but never widen (D1)", () => {
+    const code = withoutComments(scriptBody());
+    const src = /function voiceIntent\(text\) \{[\s\S]*?\n\}/.exec(code)?.[0];
+    assert.ok(src);
+    const voiceIntent = new Function(`${src}; return voiceIntent;`)() as (t: string) => string | null;
+    for (const said of ["Keep it blocked", "block that", "don't buy it", "No, don't", "cancel that"]) {
+      assert.equal(voiceIntent(said), "block", said);
+    }
+    for (const said of ["approve it", "Yes, buy it", "go ahead and buy it"]) assert.equal(voiceIntent(said), "approve", said);
+    for (const said of ["what did you buy?", "why didn't you buy that?", "keep detergent stocked"]) assert.equal(voiceIntent(said), null, said);
+
+    // "approve" by voice is answered, never obeyed.
+    const handle = /async function handleVoiceIntent\(text\) \{([\s\S]*?)\n\}/.exec(code)?.[1] ?? "";
+    assert.match(handle, /needs your passkey — not your voice/);
+    assert.ok(!/approve\(|protectedCall/.test(handle), "voice must not reach the approve path");
+    assert.match(handle, /await decline\(held\.vouch_id\)/);
   });
 
   it("works on a phone-width screen", () => {
