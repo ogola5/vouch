@@ -2397,6 +2397,12 @@ if (Recognition) {
         // "Keep it blocked" is the household's own power and is done at once;
         // "approve" is refused by voice (D1). Anything else goes to the agent.
         if (await handleVoiceIntent(final.trim())) { $("chatInput").value = ""; return; }
+        if (!chatReady) {
+          $("chatInput").value = "";
+          speak("The chat is off right now. You can still say keep it blocked.");
+          toast("The chat needs a model — but “keep it blocked” works by voice without one.");
+          return;
+        }
         say(final.trim());
       }
     };
@@ -2422,7 +2428,8 @@ async function chatBanner() {
       $("modelPill").textContent = `Agent: ${chat.model}`;
     }
     const banner = $("chatBanner");
-    $("chatMic").disabled = !chatReady;
+    // The mic stays on without a model: "keep it blocked" is the household's
+    // own command and never needs one (D1). Only talk to the agent does.
     if (chatReady) {
       banner.hidden = true;
       $("chatInput").disabled = false;

@@ -24,3 +24,6 @@ webhook-capture.jsonl
 *.sqlite-shm
 .DS_Store
 coverage/
+
+# The video recording script: kept on this machine, not published.
+VIDEO_SUBMIT.md

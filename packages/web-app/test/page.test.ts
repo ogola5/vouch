@@ -426,6 +426,12 @@ describe("the console page holds together", () => {
     assert.match(code, /renderTour\(\);\s*announceHeld\(\);/);
   });
 
+  it("keeps the mic working without a model, for the household's own commands", () => {
+    const code = withoutComments(scriptBody());
+    assert.ok(!/\$\("chatMic"\)\.disabled = !chatReady/.test(code), "the mic must not depend on the model");
+    assert.match(code, /handleVoiceIntent\(final\.trim\(\)\)\)[\s\S]{0,120}if \(!chatReady\)/);
+  });
+
   it("lets voice narrow but never widen (D1)", () => {
     const code = withoutComments(scriptBody());
     const src = /function voiceIntent\(text\) \{[\s\S]*?\n\}/.exec(code)?.[0];
